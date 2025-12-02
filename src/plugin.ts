@@ -1,12 +1,11 @@
-import type { Expression, Literal } from 'estree'
-import type { Nitro, NitroEventHandler } from 'nitropack'
+import type { Nitro } from 'nitropack'
 import type { Plugin } from 'rollup'
 import { readFile } from 'node:fs/promises'
 import { transformSync } from 'oxc-transform'
 
 const virtualPrefix = '\0nitro-handler-schema:'
 
-export function routeSchema(nitro: Nitro) {
+export function routeSchema(nitro: Nitro, importPath: string) {
   return {
     name: 'nitro:route-schema',
     async resolveId(id, importer, resolveOpts) {
@@ -23,7 +22,6 @@ export function routeSchema(nitro: Nitro) {
           return
         }
 
-        console.log('PLUGIN/found', id)
         return virtualPrefix + resolved.id
       }
     },
@@ -38,27 +36,14 @@ export function routeSchema(nitro: Nitro) {
         return
       }
 
-      let meta: NitroEventHandler['meta'] | null = null
+      let newCode: string = 'export default {}'
 
       try {
         const jsCode = transformSync(id, code).code
 
-        // if defineSchemaEventHandler
-        // Override function to generate meta
-
-        const ast = this.parse(jsCode)
-        for (const node of ast.body) {
-          if (
-            node.type === 'ExpressionStatement'
-            && node.expression.type === 'CallExpression'
-            && node.expression.callee.type === 'Identifier'
-            && node.expression.callee.name === 'defineRouteMeta'
-            && node.expression.arguments.length === 1
-          ) {
-            console.log('PLUGIN/found-meta', node.expression.arguments[0])
-            meta = astToObject(node.expression.arguments[0] as any)
-            break
-          }
+        if (jsCode.includes('defineSchemaHandler')) {
+          newCode = `import defineSchemaMetaProvider from '${importPath}';\r\n${jsCode}`
+          newCode = newCode.replace('defineSchemaHandler', 'defineSchemaMetaProvider')
         }
       }
       catch (error) {
@@ -68,31 +53,9 @@ export function routeSchema(nitro: Nitro) {
       }
 
       return {
-        code: `export default ${JSON.stringify(meta)};`,
+        code: newCode,
         map: null,
       }
     },
   } satisfies Plugin
-}
-
-function astToObject(node: Expression | Literal): any {
-  switch (node.type) {
-    case 'ObjectExpression': {
-      const obj: Record<string, any> = {}
-      for (const prop of node.properties) {
-        if (prop.type === 'Property') {
-          const key = (prop.key as any).name ?? (prop.key as any).value
-          obj[key] = astToObject(prop.value as any)
-        }
-      }
-      return obj
-    }
-    case 'ArrayExpression': {
-      return node.elements.map(el => astToObject(el as any)).filter(Boolean)
-    }
-    case 'Literal': {
-      return node.value
-    }
-    // No default
-  }
 }

@@ -8,6 +8,6 @@ export default defineNuxtConfig({
     },
   },
   nuxtSchema: {
-    enabled: true,
+    mode: 'zod',
   },
 })

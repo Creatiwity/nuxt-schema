@@ -58,11 +58,6 @@ export function defineSchemaHandler<
       }) as EndpointInput<OParams, OQuery, OBody, OBodyType>['body']
     }
 
-    // zod specific
-    // if schema.output.type === 'union'
-    //   def.options.
-    console.error('response', schema.output.def.options)
-
     let output
     try {
       output = handler(validatedInput as EndpointInput<OParams, OQuery, OBody, OBodyType>, event)

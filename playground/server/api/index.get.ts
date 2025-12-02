@@ -1,26 +1,8 @@
 import z from 'zod/v4'
+import { mode } from '#shared/schemas/Mode'
 
-const mode = z.enum(['HOME', 'WORK']).meta({
-  id: 'mode',
-  title: 'Mode',
-  description: 'Mode identifier',
-  examples: [
-    'HOME',
-    'WORK',
-  ],
-})
-
-const modes = z.strictObject({
+const query = z.object({
   modes: z.array(mode),
-}).meta({
-  id: 'modes',
-  title: 'Modes',
-  description: 'List of available modes',
-  examples: [
-    {
-      modes: ['HOME', 'WORK'],
-    },
-  ],
 })
 
 const response = z.discriminatedUnion('status', [
@@ -32,7 +14,7 @@ const response = z.discriminatedUnion('status', [
 
 export default defineSchemaHandler({
   input: {
-    query: modes,
+    query,
   },
   output: response,
 }, ({ query }) => {

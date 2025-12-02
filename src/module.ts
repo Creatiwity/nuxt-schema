@@ -4,7 +4,7 @@ import { routeSchema } from './plugin'
 
 // Module options TypeScript interface definition
 export interface ModuleOptions {
-  enabled: boolean
+  mode?: false | 'zod'
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -19,7 +19,8 @@ export default defineNuxtModule<ModuleOptions>({
 
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 
-    if (!options.enabled) {
+    const { mode } = options
+    if (!mode) {
       return
     }
 
@@ -31,10 +32,8 @@ export default defineNuxtModule<ModuleOptions>({
 
         const existingPlugin = plugins.findIndex(i => i && 'name' in i && i.name === 'import-meta')
         if (existingPlugin >= 0) {
-          plugins.splice(existingPlugin, 0, routeSchema(nitro))
+          plugins.splice(existingPlugin, 0, routeSchema(nitro, resolver.resolve(`./runtime/server/utils/meta/${mode}`)))
         }
-
-        console.log('PLUGINS', config.plugins)
       })
     })
   },
