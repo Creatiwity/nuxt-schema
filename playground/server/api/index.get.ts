@@ -1,7 +1,5 @@
 import z from 'zod/v4'
 
-const toJSONSchema = () => z.toJSONSchema(z.globalRegistry, { uri: id => `#/components/schemas/${id}` })
-
 const mode = z.enum(['HOME', 'WORK']).meta({
   id: 'mode',
   title: 'Mode',
@@ -12,7 +10,7 @@ const mode = z.enum(['HOME', 'WORK']).meta({
   ],
 })
 
-const modes = z.object({
+const modes = z.strictObject({
   modes: z.array(mode),
 }).meta({
   id: 'modes',
@@ -20,26 +18,30 @@ const modes = z.object({
   description: 'List of available modes',
   examples: [
     {
-      universes: ['HOME', 'WORK'],
+      modes: ['HOME', 'WORK'],
     },
   ],
 })
 
 const response = z.discriminatedUnion('status', [
-  z.object({ status: z.literal(200), data: mode }),
-  z.object({ status: z.literal(500), data: z.string() }),
+  z.strictObject({
+    status: z.literal(200), data: z.strictObject({ mode }),
+  }),
+  z.strictObject({ status: z.literal(500), data: z.strictObject({ error: z.string() }) }),
 ])
 
-export default defineSchemaEventHandler({
+export default defineSchemaHandler({
   input: {
-    body: modes,
+    query: modes,
   },
   output: response,
-}, toJSONSchema, ({ body }) => {
-  const mode = body.modes.at(0)
+}, ({ query }) => {
+  const mode = query.modes.at(0)
 
   return {
     status: 200,
-    data: mode ?? 'HOME' as const,
+    data: {
+      mode: mode ?? 'HOME' as const,
+    },
   }
 })

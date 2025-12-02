@@ -1,29 +1,23 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Components, Operation, Schema } from 'oas-types/3.1'
-import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterParams, readValidatedBody, setResponseStatus, type EventHandlerRequest, type H3Event } from 'h3'
+import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterParams, readValidatedBody, setResponseHeader, setResponseStatus, type EventHandlerRequest, type H3Event } from 'h3'
+import type { EndpointInput, EndpointOutput, EndpointSchema } from './types'
 
-type EndpointSchemaParams<OParams> = OParams extends object ? { params: StandardSchemaV1<OParams> } : { params?: never }
-type EndpointSchemaQuery<OQuery> = OQuery extends object ? { query: StandardSchemaV1<OQuery> } : { query?: never }
-type EndpointSchemaBody<OBody> = OBody extends object ? { body: StandardSchemaV1<OBody> } : { body?: never }
-
-type EndpointSchema<OParams, OQuery, OBody, Status extends number, OOutput extends { status: Status, data: unknown }> = {
-  input: EndpointSchemaParams<OParams> & EndpointSchemaQuery<OQuery> & EndpointSchemaBody<OBody>
-  output: StandardSchemaV1<OOutput>
-}
-
-type EndpointParams<OParams> = OParams extends object ? { params: OParams } : { params?: never }
-type EndpointQuery<OQuery> = OQuery extends object ? { query: OQuery } : { query?: never }
-type EndpointBody<OBody> = OBody extends object ? { body: OBody } : { body?: never }
-
-type EndpointInput<OParams, OQuery, OBody> = EndpointParams<OParams> & EndpointQuery<OQuery> & EndpointBody<OBody>
-
-type EndpointOutput<Status extends number, OOutput extends { status: Status, data: unknown }> = OOutput
-
-export function defineSchemaEventHandler<OParams extends object | undefined, OQuery extends object | undefined, OBody extends object | undefined, Status extends number, OOutput extends { status: Status, data: unknown }, Request extends EventHandlerRequest = EventHandlerRequest>(schema: EndpointSchema<OParams, OQuery, OBody, Status, OOutput>, _toJSONSchema: () => Record<string, Schema>, handler: (input: EndpointInput<OParams, OQuery, OBody>, event: H3Event<Request>) => EndpointOutput<Status, OOutput>) {
-  return defineEventHandler(async (event) => {
+export function defineSchemaHandler<
+  OParams,
+  OQuery,
+  OBody,
+  OBodyType,
+  Status extends number,
+  OOutput extends { status: Status, data: unknown, type?: string },
+  Request extends EventHandlerRequest = EventHandlerRequest,
+>(
+  schema: EndpointSchema<OParams, OQuery, OBody, OBodyType, Status, OOutput>,
+  handler: (input: EndpointInput<OParams, OQuery, OBody, OBodyType>, event: H3Event<Request>) => EndpointOutput<Status, OOutput>,
+  defineHandler: typeof defineEventHandler = defineEventHandler,
+) {
+  return defineHandler(async (event) => {
     const { params: schemaParams, query: schemaQuery, body: schemaBody } = schema.input
 
-    const validatedInput: Partial<EndpointInput<OParams, OQuery, OBody>> = {}
+    const validatedInput: Partial<EndpointInput<OParams, OQuery, OBody, OBodyType>> = {}
 
     if (schemaParams != null) {
       validatedInput.params = await getValidatedRouterParams(event, async (data) => {
@@ -35,7 +29,7 @@ export function defineSchemaEventHandler<OParams extends object | undefined, OQu
           }
         }
         return result.value
-      }) as EndpointInput<OParams, OQuery, OBody>['params']
+      }) as EndpointInput<OParams, OQuery, OBody, OBodyType>['params']
     }
 
     if (schemaQuery != null) {
@@ -48,7 +42,7 @@ export function defineSchemaEventHandler<OParams extends object | undefined, OQu
           }
         }
         return result.value
-      }) as EndpointInput<OParams, OQuery, OBody>['query']
+      }) as EndpointInput<OParams, OQuery, OBody, OBodyType>['query']
     }
 
     if (schemaBody != null) {
@@ -61,12 +55,17 @@ export function defineSchemaEventHandler<OParams extends object | undefined, OQu
           }
         }
         return result.value
-      }) as EndpointInput<OParams, OQuery, OBody>['body']
+      }) as EndpointInput<OParams, OQuery, OBody, OBodyType>['body']
     }
+
+    // zod specific
+    // if schema.output.type === 'union'
+    //   def.options.
+    console.error('response', schema.output.def.options)
 
     let output
     try {
-      output = handler(validatedInput as EndpointInput<OParams, OQuery, OBody>, event)
+      output = handler(validatedInput as EndpointInput<OParams, OQuery, OBody, OBodyType>, event)
     }
     catch (error) {
       // TODO: Internal issues
@@ -93,53 +92,10 @@ export function defineSchemaEventHandler<OParams extends object | undefined, OQu
 
     setResponseStatus(event, output.status)
 
+    if (output.type != null) {
+      setResponseHeader(event, 'content-type', output.type)
+    }
+
     return output.data
   })
-}
-
-interface Extensable {
-  [key: `x-${string}`]: unknown
-}
-
-interface RouteMeta {
-  openAPI?: Operation & {
-    $global?: {
-      components: Components & Extensable
-    }
-  }
-}
-
-export function defineSchemaMetaProvider<OParams extends object | undefined, OQuery extends object | undefined, OBody extends object | undefined, Status extends number, OOutput extends { status: Status, data: unknown }>(schema: EndpointSchema<OParams, OQuery, OBody, Status, OOutput>, toJSONSchema: () => Record<string, Schema>): RouteMeta {
-  return {
-    openAPI: {
-      security: [{ cookieAccessToken: [] }],
-      responses: {
-        200: {
-          description: 'List of available universes',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/universes',
-              },
-            },
-          },
-        },
-        500: {
-          description: 'Error',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/error',
-              },
-            },
-          },
-        },
-      },
-      $global: {
-        components: {
-          schemas: toJSONSchema(),
-        },
-      },
-    },
-  }
 }
