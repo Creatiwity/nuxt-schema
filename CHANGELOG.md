@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.1.6
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.5...v0.1.6)
+
+### 🩹 Fixes
+
+- Avoid adding multiple times the same schema ([a3f922a](https://github.com/creatiwity/nuxt-schema/commit/a3f922a))
+
+### 🏡 Chore
+
+- **release:** V0.1.5 ([111935e](https://github.com/creatiwity/nuxt-schema/commit/111935e))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.5
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.4...v0.1.5)
