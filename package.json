@@ -1,8 +1,8 @@
 {
   "name": "@creatiwity/nuxt-schema",
   "version": "1.0.0",
-  "description": "My new Nuxt module",
-  "repository": "your-org/my-module",
+  "description": "Nuxt Schema describe and check API",
+  "repository": "creatiwity/nuxt-schema",
   "license": "MIT",
   "type": "module",
   "exports": {
