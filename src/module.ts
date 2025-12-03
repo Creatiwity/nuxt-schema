@@ -7,9 +7,11 @@ export interface ModuleOptions {
   mode?: false | 'zod'
 }
 
+const allModes = ['zod']
+
 export default defineNuxtModule<ModuleOptions>({
   meta: {
-    name: 'nuxt-schema',
+    name: '@creatiwity/nuxt-schema',
     configKey: 'nuxtSchema',
   },
   // Default configuration options of the Nuxt module
@@ -20,7 +22,7 @@ export default defineNuxtModule<ModuleOptions>({
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 
     const { mode } = options
-    if (!mode) {
+    if (!mode || !allModes.includes(mode)) {
       return
     }
 
