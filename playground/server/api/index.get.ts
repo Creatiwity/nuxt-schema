@@ -3,12 +3,12 @@ import { mode } from '#shared/schemas/Mode'
 
 const query = z.object({
   modes: z.array(mode),
-})
+}).partial()
 
 const response = z.discriminatedUnion('status', [
   z.strictObject({
     status: z.literal(200), data: z.strictObject({ mode }),
-  }),
+  }).meta({ description: 'Mode available' }),
   z.strictObject({ status: z.literal(500), data: z.strictObject({ error: z.string() }) }),
 ])
 
@@ -18,7 +18,7 @@ export default defineSchemaHandler({
   },
   output: response,
 }, ({ query }) => {
-  const mode = query.modes.at(0)
+  const mode = query.modes?.at(0)
 
   return {
     status: 200,

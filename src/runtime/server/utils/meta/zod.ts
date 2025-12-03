@@ -155,11 +155,13 @@ export default function defineSchemaMetaProvider<OParams, OQuery, OBody, OBodyTy
 
   if (schema.input.query != null) {
     parameters.splice(-1, 0, ...Object.entries(schema.input.query.def.shape).map(([key, value]) => {
+      const typedValue = value as (z.core.$ZodObjectDef | z.core.$ZodOptionalDef) & z.core.$ZodType & SimpleZodMeta
+
       return {
         name: key,
         in: 'query' as const,
-        required: true,
-        schema: addSchema(value as z.core.$ZodType & SimpleZodMeta),
+        required: typedValue.type !== 'optional',
+        schema: addSchema(typedValue),
       }
     }))
   }
