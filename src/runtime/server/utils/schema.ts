@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterParams, readValidatedBody, setResponseHeader, setResponseStatus, type EventHandlerRequest, type H3Event } from 'h3'
+import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterParams, H3Error, readValidatedBody, setResponseHeader, setResponseStatus, type EventHandlerRequest, type H3Event } from 'h3'
 import type { EndpointInput, EndpointOutput, EndpointSchema } from './types'
 import { isPromise } from 'node:util/types'
 
@@ -70,14 +70,19 @@ export function defineSchemaHandler<
       }
     }
     catch (error) {
-      // TODO: Internal issues
-      console.error(error)
+      // Allow H3Error with allowed response code
+      if (error instanceof H3Error) {
+        output = { status: error.statusCode, data: { message: error.message } } as OOutput
+      }
+      else {
+        console.error(error)
 
-      throw createError({
-        status: 500,
-        statusText: 'Internal Server Error',
-        message: 'Unhandled unknown internal error',
-      })
+        throw createError({
+          status: 500,
+          statusText: 'Internal Server Error',
+          message: 'Unhandled unknown internal error',
+        })
+      }
     }
 
     const result = await schema.output['~standard'].validate(output)
