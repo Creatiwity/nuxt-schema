@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.1.5
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.4...v0.1.5)
+
+### 🩹 Fixes
+
+- Accept async handler ([8fa50da](https://github.com/creatiwity/nuxt-schema/commit/8fa50da))
+
+### 🏡 Chore
+
+- **release:** V0.1.4 ([849e14f](https://github.com/creatiwity/nuxt-schema/commit/849e14f))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.4
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.1...v0.1.4)
