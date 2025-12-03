@@ -99,7 +99,9 @@ function useRegistry() {
     addSchema: (value: z.core.$ZodType & SimpleZodMeta) => {
       const meta = value.meta()
       if (meta?.id != null) {
-        registry.add(value, { id: meta.id })
+        if (!registry.has(value)) {
+          registry.add(value, { id: meta.id })
+        }
 
         return {
           $ref: `#/components/schemas/${meta.id}`,
