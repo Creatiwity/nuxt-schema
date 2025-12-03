@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.1.8
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.7...v0.1.8)
+
+### 🩹 Fixes
+
+- Optional data on output ([f02e0df](https://github.com/creatiwity/nuxt-schema/commit/f02e0df))
+
+### 🏡 Chore
+
+- **release:** V0.1.7 ([d9729a5](https://github.com/creatiwity/nuxt-schema/commit/d9729a5))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.7
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.6...v0.1.7)
