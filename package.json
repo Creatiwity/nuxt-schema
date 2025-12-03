@@ -1,10 +1,11 @@
 {
   "name": "@creatiwity/nuxt-schema",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Nuxt Schema describe and check API",
   "repository": "creatiwity/nuxt-schema",
   "license": "MIT",
   "type": "module",
+  "private": false,
   "exports": {
     ".": {
       "types": "./dist/types.d.mts",
