@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.1.7
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.6...v0.1.7)
+
+### 🩹 Fixes
+
+- Allow status code from H3Error ([22786f4](https://github.com/creatiwity/nuxt-schema/commit/22786f4))
+
+### 🏡 Chore
+
+- **release:** V0.1.6 ([f95b94b](https://github.com/creatiwity/nuxt-schema/commit/f95b94b))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.6
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.5...v0.1.6)
