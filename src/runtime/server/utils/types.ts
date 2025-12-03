@@ -6,7 +6,7 @@ type EndpointSchemaBody<OBody> = OBody extends object ? { body: StandardSchemaV1
 
 type EndpointBodyType<OBodyType> = OBodyType extends string ? { bodyType: OBodyType } : { bodyType?: never }
 
-export type EndpointSchema<OParams, OQuery, OBody, OBodyType, Status extends number, OOutput extends { status: Status, data: unknown }> = {
+export type EndpointSchema<OParams, OQuery, OBody, OBodyType, Status extends number, OOutput extends { status: Status, data?: unknown }> = {
   input: EndpointSchemaParams<OParams> & EndpointSchemaQuery<OQuery> & EndpointSchemaBody<OBody> & EndpointBodyType<OBodyType>
   output: StandardSchemaV1<OOutput>
 }
@@ -17,4 +17,4 @@ type EndpointBody<OBody> = OBody extends object ? { body: OBody } : { body?: nev
 
 export type EndpointInput<OParams, OQuery, OBody, OBodyType> = EndpointParams<OParams> & EndpointQuery<OQuery> & EndpointBody<OBody> & EndpointBodyType<OBodyType>
 
-export type EndpointOutput<Status extends number, OOutput extends { status: Status, data: unknown, type?: string }> = OOutput
+export type EndpointOutput<Status extends number, OOutput extends { status: Status, data?: unknown, type?: string }> = OOutput

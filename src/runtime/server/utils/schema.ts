@@ -8,7 +8,7 @@ export function defineSchemaHandler<
   OBody,
   OBodyType,
   Status extends number,
-  OOutput extends { status: Status, data: unknown, type?: string },
+  OOutput extends { status: Status, data?: unknown, type?: string },
   Request extends EventHandlerRequest = EventHandlerRequest,
 >(
   schema: EndpointSchema<OParams, OQuery, OBody, OBodyType, Status, OOutput>,
