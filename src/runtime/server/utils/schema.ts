@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterParams, readValidatedBody, setResponseHeader, setResponseStatus, type EventHandlerRequest, type H3Event } from 'h3'
 import type { EndpointInput, EndpointOutput, EndpointSchema } from './types'
+import { isPromise } from 'node:util/types'
 
 export function defineSchemaHandler<
   OParams,
@@ -11,7 +12,7 @@ export function defineSchemaHandler<
   Request extends EventHandlerRequest = EventHandlerRequest,
 >(
   schema: EndpointSchema<OParams, OQuery, OBody, OBodyType, Status, OOutput>,
-  handler: (input: EndpointInput<OParams, OQuery, OBody, OBodyType>, event: H3Event<Request>) => EndpointOutput<Status, OOutput>,
+  handler: (input: EndpointInput<OParams, OQuery, OBody, OBodyType>, event: H3Event<Request>) => EndpointOutput<Status, OOutput> | Promise<EndpointOutput<Status, OOutput>>,
   defineHandler: typeof defineEventHandler = defineEventHandler,
 ) {
   return defineHandler(async (event) => {
@@ -58,9 +59,15 @@ export function defineSchemaHandler<
       }) as EndpointInput<OParams, OQuery, OBody, OBodyType>['body']
     }
 
-    let output
+    let output: EndpointOutput<Status, OOutput>
     try {
-      output = handler(validatedInput as EndpointInput<OParams, OQuery, OBody, OBodyType>, event)
+      const unchecked = handler(validatedInput as EndpointInput<OParams, OQuery, OBody, OBodyType>, event)
+      if (isPromise(unchecked)) {
+        output = await unchecked
+      }
+      else {
+        output = unchecked
+      }
     }
     catch (error) {
       // TODO: Internal issues
