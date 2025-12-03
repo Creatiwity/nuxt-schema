@@ -43,6 +43,10 @@ jobs:
 
       - run: npm i -g --force corepack@latest && corepack enable
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install dependencies
         run: npx nypm@latest i
 
