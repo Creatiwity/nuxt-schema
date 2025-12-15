@@ -12,4 +12,8 @@ export default defineSchemaHandler({
       mode: mode ?? 'HOME' as const,
     },
   }
+}, {
+  onValidationError(type, failureResult, event) {
+    console.error(type, failureResult, event.path)
+  },
 })
