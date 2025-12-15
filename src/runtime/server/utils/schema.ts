@@ -2,6 +2,8 @@ import { createError, defineEventHandler, getValidatedQuery, getValidatedRouterP
 import type { EndpointInput, EndpointOutput, EndpointSchema } from './types'
 import { isPromise } from 'node:util/types'
 
+export { defineSchemaMetaProvider } from './meta/zod'
+
 export function defineSchemaHandler<
   OParams,
   OQuery,

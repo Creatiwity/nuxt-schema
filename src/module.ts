@@ -1,13 +1,11 @@
-import { defineNuxtModule, createResolver, useNitro, addServerImportsDir } from '@nuxt/kit'
+import { defineNuxtModule, createResolver, useNitro, addServerImportsDir, addServerScanDir } from '@nuxt/kit'
 import type { InputPluginOption } from 'rollup'
-import { routeSchema } from './plugin'
+import { routeSchema, virtualPrefix } from './plugin'
 
 // Module options TypeScript interface definition
 export interface ModuleOptions {
-  mode?: false | 'zod'
+  enabled?: boolean
 }
-
-const allModes = ['zod']
 
 export default defineNuxtModule<ModuleOptions>({
   meta: {
@@ -20,9 +18,10 @@ export default defineNuxtModule<ModuleOptions>({
     const resolver = createResolver(import.meta.url)
 
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
+    addServerScanDir(virtualPrefix)
 
-    const { mode } = options
-    if (!mode || !allModes.includes(mode)) {
+    const { enabled } = options
+    if (!enabled) {
       return
     }
 
@@ -34,7 +33,7 @@ export default defineNuxtModule<ModuleOptions>({
 
         const existingPlugin = plugins.findIndex(i => i && 'name' in i && i.name === 'import-meta')
         if (existingPlugin >= 0) {
-          plugins.splice(existingPlugin, 0, routeSchema(nitro, resolver.resolve(`./runtime/server/utils/meta/${mode}`)))
+          plugins.splice(existingPlugin, 0, routeSchema(nitro))
         }
       })
     })

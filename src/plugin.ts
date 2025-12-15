@@ -3,31 +3,34 @@ import type { Plugin } from 'rollup'
 import { readFile } from 'node:fs/promises'
 import { transformSync } from 'oxc-transform'
 
-const virtualPrefix = '\0nitro-handler-schema:'
+export const virtualPrefix = 'virtual:#nitro-handler-schema'
 
-export function routeSchema(nitro: Nitro, importPath: string) {
+export function routeSchema(nitro: Nitro) {
+  const { srcDir } = nitro.options
+
   return {
     name: 'nitro:route-schema',
     async resolveId(id, importer, resolveOpts) {
-      if (id.startsWith('\0') || id.startsWith('#internal')) {
+      if (!id.startsWith(srcDir) || !id.endsWith(`?meta`)) {
         return
       }
-      if (id.endsWith(`?meta`)) {
-        const resolved = await this.resolve(
-          id.replace(`?meta`, ``),
-          importer,
-          resolveOpts,
-        )
-        if (!resolved) {
-          return
-        }
 
-        return virtualPrefix + resolved.id
+      const resolved = await this.resolve(
+        id.replace(`?meta`, ``),
+        importer,
+        resolveOpts,
+      )
+      if (!resolved) {
+        return
       }
+
+      const relativePath = resolved.id.slice(srcDir.length)
+
+      return virtualPrefix + relativePath
     },
     load(id) {
       if (id.startsWith(virtualPrefix)) {
-        const fullPath = id.slice(virtualPrefix.length)
+        const fullPath = `${srcDir}${id.slice(virtualPrefix.length)}`
         return readFile(fullPath, { encoding: 'utf8' })
       }
     },
@@ -42,8 +45,7 @@ export function routeSchema(nitro: Nitro, importPath: string) {
         const jsCode = transformSync(id, code).code
 
         if (jsCode.includes('defineSchemaHandler')) {
-          newCode = `import defineSchemaMetaProvider from '${importPath}';\r\n${jsCode}`
-          newCode = newCode.replace('defineSchemaHandler', 'defineSchemaMetaProvider')
+          newCode = jsCode.replaceAll('defineSchemaHandler', 'defineSchemaMetaProvider')
         }
       }
       catch (error) {

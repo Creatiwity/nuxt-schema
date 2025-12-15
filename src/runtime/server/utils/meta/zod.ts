@@ -139,7 +139,7 @@ function useRegistry() {
   }
 }
 
-export default function defineSchemaMetaProvider<OParams, OQuery, OBody, OBodyType>(schema: EndpointZodSchema<OParams, OQuery, OBody, OBodyType>): RouteMeta {
+export function defineSchemaMetaProvider<OParams, OQuery, OBody, OBodyType>(schema: EndpointZodSchema<OParams, OQuery, OBody, OBodyType>): RouteMeta {
   const { addSchema, toJSONSchema } = useRegistry()
 
   const parameters: Parameter[] = []
