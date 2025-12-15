@@ -4,12 +4,22 @@ export default defineSchemaHandler({
   },
   output: response,
 }, ({ query }) => {
-  const mode = query.modes?.at(0)
+  const mode = (() => {
+    if (query.modes == null) {
+      return 'HOME' as const
+    }
+    else if (Array.isArray(query.modes)) {
+      return query.modes.at(0) ?? 'HOME' as const
+    }
+    else {
+      return query.modes
+    }
+  })()
 
   return {
     status: 200,
     data: {
-      mode: mode ?? 'HOME' as const,
+      mode,
     },
   }
 }, {

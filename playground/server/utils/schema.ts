@@ -2,7 +2,7 @@ import z from 'zod/v4'
 import { mode } from '#shared/schemas/Mode'
 
 export const query = z.object({
-  modes: z.array(mode),
+  modes: z.union([mode, z.array(mode)]),
 }).partial()
 
 export const response = z.discriminatedUnion('status', [
