@@ -1,6 +1,20 @@
 # Changelog
 
 
+## v0.1.10
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.9...v0.1.10)
+
+### 🏡 Chore
+
+- **release:** V0.1.9 ([13dc8a3](https://github.com/creatiwity/nuxt-schema/commit/13dc8a3))
+- Upgrade dependencies ([6897175](https://github.com/creatiwity/nuxt-schema/commit/6897175))
+- Improve query array example ([85a3afc](https://github.com/creatiwity/nuxt-schema/commit/85a3afc))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.9
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.8...v0.1.9)
