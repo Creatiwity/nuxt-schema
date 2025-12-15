@@ -1,6 +1,26 @@
 # Changelog
 
 
+## v0.1.9
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.8...v0.1.9)
+
+### 🚀 Enhancements
+
+- Add error hooks ([ef7bed6](https://github.com/creatiwity/nuxt-schema/commit/ef7bed6))
+
+### 🩹 Fixes
+
+- Auto import was not working in virtual code ([8d418f3](https://github.com/creatiwity/nuxt-schema/commit/8d418f3))
+
+### 🏡 Chore
+
+- **release:** V0.1.8 ([85456c5](https://github.com/creatiwity/nuxt-schema/commit/85456c5))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.8
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.7...v0.1.8)
