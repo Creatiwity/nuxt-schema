@@ -1,65 +1,320 @@
-# Nuxt Schema
+# @creatiwity/nuxt-schema
 
 [![npm version][npm-version-src]][npm-version-href]
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![License][license-src]][license-href]
 [![Nuxt][nuxt-src]][nuxt-href]
 
-Nuxt Schema describe and check APIs.
+Nuxt module that brings schema-validated API handlers to your server routes and auto-generates a fully typed client API object for the frontend.
 
 - [✨ &nbsp;Release Notes](/CHANGELOG.md)
-<!-- - [🏀 Online playground](https://stackblitz.com/github/your-org/@creatiwity/nuxt-schema?file=playground%2Fapp.vue) -->
-<!-- - [📖 &nbsp;Documentation](https://example.com) -->
 
 ## Features
 
-<!-- Highlight some of the features your module provide here -->
-- ⛰ &nbsp;Foo
-- 🚠 &nbsp;Bar
-- 🌲 &nbsp;Baz
+- **`defineSchemaHandler`** — declare `input` (params, query, body) and `output` schemas on your Nitro handlers; validation runs automatically at runtime via [Standard Schema v1](https://github.com/standard-schema/standard-schema)
+- **Generated `api` client** — for every `defineSchemaHandler` route, the module generates a typed client object auto-imported everywhere in your Nuxt app
+- **TanStack Query integration** (optional) — `useQuery`, `fetchQuery` with reactive cache keys
+- **Nuxt-native** — `useFetch` and `$fetch` variants always available
+- **Cache key utilities** — `key()` with the same signature as `useQuery`, for `invalidateQueries`
+- **Zod schema access** — `zod.params`, `zod.query`, `zod.body` on each endpoint for form validation reuse
+- **OpenAPI metadata** — optional Nitro plugin that exposes route schemas as OpenAPI docs
 
-## Quick Setup
+---
 
-Install the module to your Nuxt application with one command:
+## Installation
 
 ```bash
 npx nuxi module add @creatiwity/nuxt-schema
 ```
 
-That's it! You can now use Nuxt Schema in your Nuxt app ✨
+Or manually:
 
+```bash
+npm install -D @creatiwity/nuxt-schema
+```
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['@creatiwity/nuxt-schema'],
+})
+```
+
+### Optional: TanStack Query
+
+If you want `useQuery` and `fetchQuery`, install `@tanstack/vue-query` and set up a Nuxt plugin:
+
+```bash
+npm install @tanstack/vue-query
+```
+
+```ts
+// plugins/vue-query.ts
+import type { DehydratedState, VueQueryPluginOptions } from '@tanstack/vue-query'
+import { useState } from '#imports'
+import { dehydrate, hydrate, QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+
+export default defineNuxtPlugin((nuxt) => {
+  const vueQueryState = useState<DehydratedState | null>('vue-query')
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { staleTime: 60000 } },
+  })
+
+  nuxt.vueApp.use(VueQueryPlugin, { queryClient } as VueQueryPluginOptions)
+
+  if (import.meta.server) {
+    nuxt.hooks.hook('app:rendered', () => {
+      vueQueryState.value = dehydrate(queryClient)
+    })
+  }
+  if (import.meta.client) {
+    hydrate(queryClient, vueQueryState.value)
+  }
+})
+```
+
+The module auto-detects `@tanstack/vue-query` in your project and adds `useQuery`/`fetchQuery` to the generated client.
+
+---
+
+## Usage
+
+### 1. Define schemas in `shared/schemas/`
+
+Place schemas in `shared/schemas/` so they are accessible on both server and client (Nuxt auto-imports them via the `#shared` alias).
+
+```ts
+// shared/schemas/invoices.ts
+import z from 'zod/v4'
+
+export const invoicesParams = z.object({ id: z.string() })
+
+export const invoicesQuery = z.object({
+  page: z.coerce.number().optional(),
+  query: z.string().optional(),
+})
+
+export const invoicesResponse = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal(200),
+    data: z.strictObject({ invoices: z.array(z.string()) }),
+  }),
+  z.strictObject({
+    status: z.literal(404),
+    data: z.strictObject({ error: z.string() }),
+  }),
+])
+```
+
+### 2. Create a validated handler
+
+```ts
+// server/api/structure/[id]/invoices.get.ts
+import { invoicesParams, invoicesQuery, invoicesResponse } from '#shared/schemas/invoices'
+
+export default defineSchemaHandler({
+  input: {
+    params: invoicesParams,
+    query: invoicesQuery,
+  },
+  output: invoicesResponse,
+}, ({ params, query }) => {
+  return {
+    status: 200 as const,
+    data: { invoices: [`invoice-${params.id}-page${query.page ?? 1}`] },
+  }
+})
+```
+
+`defineSchemaHandler` validates `params`, `query`, and `body` at runtime. Invalid input returns a descriptive error. The output is also validated — a mismatch returns 500.
+
+### 3. Use the generated `api` client
+
+`api` and `useApi` are auto-imported everywhere in your Nuxt app. The API tree mirrors your file structure: dynamic segments `[id]` become `$id`, and the HTTP method becomes the terminal node `$get` / `$post` / etc.
+
+```
+server/api/structure/[id]/invoices.get.ts
+→ api.structure.$id.invoices.$get
+```
+
+```vue
+<script setup lang="ts">
+// TanStack reactive query
+const { data, isPending } = api.structure.$id.invoices.$get.useQuery({
+  params: { id: 'abc' },
+  query: { page: 1 },
+})
+
+// Nuxt native
+const { data } = api.structure.$id.invoices.$get.useFetch({
+  params: { id: 'abc' },
+})
+</script>
+```
+
+---
+
+## Client API reference
+
+### GET endpoints
+
+```ts
+// Reactive query (TanStack) — re-fetches when params/query change
+const { data, isPending } = api.structure.$id.invoices.$get.useQuery(
+  { params: { id: 'abc' }, query: { page: 1 } },
+  queryOptions?, // Omit<UseQueryOptions, 'queryKey' | 'queryFn'>
+)
+
+// Imperative fetch (TanStack) — for prefetch or event handlers
+const result = await api.structure.$id.invoices.$get.fetchQuery(
+  queryClient,
+  { params: { id: 'abc' } },
+  queryOptions?,
+)
+
+// Nuxt native composable
+const { data, pending } = api.structure.$id.invoices.$get.useFetch(
+  { params: { id: 'abc' }, query: { page: 1 } },
+  fetchOptions?,
+)
+
+// Raw fetch
+const data = await api.structure.$id.invoices.$get.$fetch({ params: { id: 'abc' } })
+
+// Cache key — same signature as useQuery (without queryOptions)
+const key = api.structure.$id.invoices.$get.key({ params: { id: 'abc' } })
+// → ["structure", "$id", "invoices", "$get", { id: "abc" }]
+
+// Partial key — invalidates all queries for this route regardless of query params
+await queryClient.invalidateQueries({
+  queryKey: api.structure.$id.invoices.$get.key({ params: { id: 'abc' } }).slice(0, -1),
+})
+
+// Zod schema access — reuse schemas for form validation
+const querySchema = api.structure.$id.invoices.$get.zod.query
+querySchema.parse({ page: '2' }) // → { page: 2 }
+```
+
+**Type rules for GET options:**
+- `params` is **required** when the route has dynamic segments (e.g. `[id]`)
+- `query` is **optional** at the wrapper level; field-level required/optional is controlled by your schema
+
+### POST / PATCH / PUT / DELETE endpoints
+
+```ts
+// Reactive mutation (TanStack)
+const { mutate, isPending } = api.orders.$post.useMutation(mutationOptions?)
+mutate(body)
+
+// Nuxt native
+const { data } = await api.orders.$post.useFetch(body, fetchOptions?)
+
+// Raw fetch
+await api.orders.$post.$fetch(body)
+```
+
+For endpoints with dynamic params:
+
+```ts
+await api.structure.$id.orders.$post.$fetch(body, { params: { id: 'abc' } })
+```
+
+---
+
+## `defineSchemaHandler` options
+
+The third argument to `defineSchemaHandler` is optional:
+
+```ts
+defineSchemaHandler(schema, handler, {
+  // Override the H3 handler factory (useful for testing)
+  defineHandler?: typeof defineEventHandler,
+
+  // Called when input or output validation fails — use to log or report
+  onValidationError?: (type: 'params' | 'query' | 'body' | 'output', result, event) => void,
+
+  // Called when the handler throws an H3Error
+  onH3Error?: (h3Error, event) => void,
+
+  // Called when the handler throws any other error
+  onHandlerError?: (error, event) => void,
+})
+```
+
+---
+
+## Module options
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ['@creatiwity/nuxt-schema'],
+  nuxtSchema: {
+    // Enables OpenAPI metadata extraction via a Nitro Rollup plugin.
+    // Requires nitro.experimental.openAPI: true in your nuxt.config.
+    enabled: false,
+  },
+})
+```
+
+---
+
+## How code generation works
+
+At `nuxi prepare` / `nuxi dev` startup, the module:
+
+1. Scans `server/api/` for `*.get.ts`, `*.post.ts`, `*.put.ts`, `*.patch.ts`, `*.delete.ts`
+2. Filters to files that contain `defineSchemaHandler`
+3. Parses each handler's first argument to extract schema variable names and their import sources
+4. Writes `.nuxt/schema-api/<endpoint>.ts` — one typed file per endpoint
+5. Writes `.nuxt/schema-api.ts` — the `api` tree that imports all endpoints and is registered as an auto-import
+
+During development, `builder:watch` triggers regeneration whenever a route handler or a `shared/schemas/**` file changes.
+
+### Schema import convention
+
+The generator traces schema imports to resolve types. Schemas must be importable from code that runs on the client (no server-only imports). Using `shared/schemas/` is the recommended pattern:
+
+```ts
+// ✅ Accessible on both client and server
+import { mySchema } from '#shared/schemas/foo'
+import { mySchema } from '~/shared/schemas/foo'
+
+// ❌ Server-only — the generator cannot import this on the client
+import { mySchema } from '~/server/utils/private-schema'
+```
+
+---
 
 ## Contribution
 
-<details>
-  <summary>Local development</summary>
-  
-  ```bash
-  # Install dependencies
-  npm install
-  
-  # Generate type stubs
-  npm run dev:prepare
-  
-  # Develop with the playground
-  npm run dev
-  
-  # Build the playground
-  npm run dev:build
-  
-  # Run ESLint
-  npm run lint
-  
-  # Run Vitest
-  npm run test
-  npm run test:watch
-  
-  # Release new version
-  npm run release
-  ```
+```bash
+# Install dependencies
+bun install
 
-</details>
+# Generate type stubs and prepare playground
+npm run dev:prepare
 
+# Start playground dev server
+npm run dev
+
+# Build the playground
+npm run dev:build
+
+# Run ESLint
+npm run lint
+
+# Run Vitest
+npm run test
+npm run test:watch
+
+# Type check
+npm run test:types
+
+# Release
+npm run release
+```
 
 <!-- Badges -->
 [npm-version-src]: https://img.shields.io/npm/v/@creatiwity/nuxt-schema/latest.svg?style=flat&colorA=020420&colorB=00DC82
