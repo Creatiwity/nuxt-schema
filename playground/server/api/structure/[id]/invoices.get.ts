@@ -1,0 +1,16 @@
+import { invoicesParams, invoicesQuery, invoicesResponse } from '#shared/schemas/invoices'
+
+export default defineSchemaHandler({
+  input: {
+    params: invoicesParams,
+    query: invoicesQuery,
+  },
+  output: invoicesResponse,
+}, ({ params, query }) => {
+  return {
+    status: 200 as const,
+    data: {
+      invoices: [`invoice-${params.id}-page${query.page ?? 1}${query.query ? `-${query.query}` : ''}`],
+    },
+  }
+})

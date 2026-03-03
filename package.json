@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@nuxt/kit": "^4.3.1",
-    "oxc-transform": "^0.115.0"
+    "oxc-transform": "^0.116.0"
   },
   "devDependencies": {
     "@nuxt/devtools": "^3.2.2",
@@ -45,11 +45,13 @@
     "@nuxt/schema": "^4.3.1",
     "@nuxt/test-utils": "^4.0.0",
     "@standard-schema/spec": "^1.1.0",
+    "@tanstack/vue-query": "^5.92.9",
     "@types/node": "latest",
     "changelogen": "^0.6.2",
     "eslint": "^9.39.3",
     "nuxt": "^4.3.1",
     "oas-types": "^1.0.7",
+    "tinyglobby": "^0.2.15",
     "typescript": "~5.9.3",
     "vitest": "^4.0.18",
     "vue-tsc": "^3.2.5",

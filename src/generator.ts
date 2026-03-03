@@ -1,0 +1,536 @@
+import { readFileSync, mkdirSync, writeFileSync, readdirSync, unlinkSync, existsSync } from 'node:fs'
+import { resolve, dirname, relative, join } from 'node:path'
+import { transformSync } from 'oxc-transform'
+
+export interface SchemaImport {
+  name: string
+  from: string
+}
+
+export interface EndpointInfo {
+  fileKey: string
+  method: string
+  pathSegments: string[]
+  hasDynamicParams: boolean
+  schemaImports: {
+    params?: SchemaImport
+    query?: SchemaImport
+    body?: SchemaImport
+  }
+  usesDefineSchema: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Parsing
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract schema variable references from the transformed JS of a handler file.
+ * Returns where params/query/body schemas are imported from.
+ */
+function extractSchemaRefs(
+  jsCode: string,
+  filePath: string,
+  srcDir: string,
+): EndpointInfo['schemaImports'] {
+  // Build a map: varName → importSource
+  const importMap: Record<string, string> = {}
+  const importRegex = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
+  let m: RegExpExecArray | null
+  while ((m = importRegex.exec(jsCode)) !== null) {
+    const source = m[2]!
+    for (let part of m[1]!.split(',')) {
+      part = part.trim()
+      if (!part) continue
+      // "name as alias" → use alias
+      const alias = part.split(/\s+as\s+/).pop()!.trim()
+      importMap[alias] = source
+    }
+  }
+
+  // Locate defineSchemaHandler( and extract its first argument using bracket depth
+  const handlerIdx = jsCode.indexOf('defineSchemaHandler(')
+  if (handlerIdx === -1) return {}
+
+  const startIdx = handlerIdx + 'defineSchemaHandler('.length
+  let depth = 0
+  let firstArgEnd = -1
+  for (let i = startIdx; i < jsCode.length; i++) {
+    const c = jsCode[i]
+    if (c === '(' || c === '{' || c === '[') {
+      depth++
+    }
+    else if (c === ')' || c === '}' || c === ']') {
+      if (depth === 0) {
+        firstArgEnd = i
+        break
+      }
+      depth--
+    }
+    else if (c === ',' && depth === 0) {
+      firstArgEnd = i
+      break
+    }
+  }
+  if (firstArgEnd === -1) return {}
+
+  const schemaArg = jsCode.slice(startIdx, firstArgEnd)
+
+  // Extract variable names from input: { params: X, query: Y, body: Z }
+  const inputMatch = schemaArg.match(/input\s*:\s*\{([^}]+)\}/)
+  const inputBlock = inputMatch?.[1] ?? ''
+
+  const paramsVar = inputBlock.match(/params\s*:\s*(\w+)/)?.[1]
+  const queryVar = inputBlock.match(/query\s*:\s*(\w+)/)?.[1]
+  const bodyVar = inputBlock.match(/body\s*:\s*(\w+)/)?.[1]
+
+  const fileDir = dirname(filePath)
+
+  function resolveImport(varName: string | undefined): SchemaImport | undefined {
+    if (!varName) return undefined
+    const src = importMap[varName]
+    if (!src) return undefined
+
+    // Already an alias (starts with #, @/, ~/) — use as-is
+    if (!src.startsWith('.')) {
+      return { name: varName, from: src }
+    }
+
+    // Relative path → convert to ~/ alias (relative to srcDir)
+    const abs = resolve(fileDir, src)
+    const rel = relative(srcDir, abs).replace(/\\/g, '/')
+    return { name: varName, from: '~/' + rel }
+  }
+
+  return {
+    params: resolveImport(paramsVar),
+    query: resolveImport(queryVar),
+    body: resolveImport(bodyVar),
+  }
+}
+
+/**
+ * Parse a route file (relative to apiDir) into an EndpointInfo.
+ */
+export function parseEndpoint(file: string, apiDir: string, srcDir: string): EndpointInfo {
+  const withoutExt = file.replace(/\.ts$/, '')
+  const parts = withoutExt.split('/')
+  const lastPart = parts[parts.length - 1]!
+  const methodMatch = lastPart.match(/^(.+)\.(get|post|put|patch|delete)$/)
+  if (!methodMatch) throw new Error(`Cannot parse method from file: ${file}`)
+
+  const method = methodMatch[2]!
+  const lastSegmentName = methodMatch[1] === 'index' ? null : methodMatch[1]!
+
+  const rawSegments = [
+    ...parts.slice(0, -1),
+    ...(lastSegmentName ? [lastSegmentName] : []),
+  ]
+
+  // Convert [param] → $param
+  const pathSegments = rawSegments.map(p => p.replace(/^\[(\w+)\]$/, '$$$1'))
+  const hasDynamicParams = pathSegments.some(p => p.startsWith('$'))
+
+  // File key: segments joined with -- then .method  (e.g. structure--$id--invoices.get)
+  const fileKey = (pathSegments.length ? pathSegments.join('--') + '.' : '') + method
+
+  const filePath = resolve(apiDir, file)
+  let schemaImports: EndpointInfo['schemaImports'] = {}
+  let usesDefineSchema = false
+  try {
+    const raw = readFileSync(filePath, 'utf-8')
+    usesDefineSchema = raw.includes('defineSchemaHandler')
+    if (usesDefineSchema) {
+      const { code } = transformSync(filePath, raw)
+      schemaImports = extractSchemaRefs(code, filePath, srcDir)
+    }
+  }
+  catch {
+    // Non-critical: file might have syntax errors, skip schema extraction
+  }
+
+  return { fileKey, method, pathSegments, hasDynamicParams, schemaImports, usesDefineSchema }
+}
+
+// ---------------------------------------------------------------------------
+// Code generation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * A compact type helper that infers the output type of any Standard Schema V1
+ * compatible schema (Zod v4, Valibot, etc.) without requiring an import.
+ */
+const TYPE_HELPER = `type _I<T> = T extends { '~standard': { types?: { output?: infer O } | undefined } } ? NonNullable<O> : unknown`
+
+function buildUrlFn(pathSegments: string[]): string {
+  if (!pathSegments.some(s => s.startsWith('$'))) {
+    const url = '/api/' + pathSegments.join('/')
+    return `function _url() { return '${url}' }`
+  }
+  const paramFields = pathSegments
+    .filter(s => s.startsWith('$'))
+    .map(s => `${s.slice(1)}: string`)
+    .join('; ')
+  const urlTemplate = '/api/' + pathSegments.map(s =>
+    s.startsWith('$') ? `\${params.${s.slice(1)}}` : s,
+  ).join('/')
+  return `function _url(params: { ${paramFields} }) { return \`${urlTemplate}\` }`
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint file generation
+// ---------------------------------------------------------------------------
+
+export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): string {
+  const { method, pathSegments, hasDynamicParams, schemaImports } = ep
+  const isGet = method === 'get'
+  const methodUpper = method.toUpperCase()
+  const PATH_KEY = JSON.stringify([...pathSegments, '$' + method])
+
+  // Schema variable names
+  const sv = {
+    params: schemaImports.params?.name,
+    query: schemaImports.query?.name,
+    body: schemaImports.body?.name,
+  }
+
+  // Group schema imports by source file
+  const importsBySource: Record<string, Set<string>> = {}
+  for (const ref of [schemaImports.params, schemaImports.query, schemaImports.body]) {
+    if (!ref) {
+      continue
+    }
+
+    (importsBySource[ref.from] ??= new Set()).add(ref.name)
+  }
+
+  const lines: string[] = [
+    `// Auto-generated by @creatiwity/nuxt-schema — DO NOT EDIT`,
+    `// Route: ${methodUpper} /api/${pathSegments.join('/')}`,
+    ``,
+  ]
+
+  // Framework imports
+  if (hasTanstack) {
+    if (isGet) {
+      lines.push(`import { useQuery, type QueryClient } from '@tanstack/vue-query'`)
+      lines.push(`import type { UseQueryOptions } from '@tanstack/vue-query'`)
+    }
+    else {
+      lines.push(`import { useMutation } from '@tanstack/vue-query'`)
+      lines.push(`import type { UseMutationOptions } from '@tanstack/vue-query'`)
+    }
+  }
+  lines.push(`import { useFetch } from '#app'`)
+  if (isGet && hasTanstack) {
+    lines.push(`import { computed, toValue } from 'vue'`)
+    lines.push(`import type { MaybeRefOrGetter } from 'vue'`)
+  }
+
+  // Schema imports
+  for (const [from, names] of Object.entries(importsBySource)) {
+    lines.push(`import { ${[...names].join(', ')} } from '${from}'`)
+  }
+
+  lines.push(``)
+  lines.push(TYPE_HELPER)
+  lines.push(``)
+  lines.push(`const _PATH = ${PATH_KEY} as const`)
+  lines.push(``)
+
+  // Inferred TypeScript types from schemas
+  const paramsType = sv.params ? `_I<typeof ${sv.params}>` : null
+  const queryType = sv.query ? `_I<typeof ${sv.query}>` : null
+  const bodyType = sv.body ? `_I<typeof ${sv.body}>` : null
+
+  lines.push(buildUrlFn(pathSegments))
+  lines.push(``)
+
+  // Build the options object type for GET methods
+  // params is required when route has dynamic segments
+  // query is always optional at the wrapper level (Zod handles field-level required)
+  function buildGetOptionsType(reactive: boolean): string | null {
+    const fields: string[] = []
+    if (hasDynamicParams && paramsType) fields.push(`params: ${paramsType}`)
+    if (queryType) fields.push(`query?: ${queryType}`)
+    if (!fields.length) return null
+    const inner = `{ ${fields.join('; ')} }`
+    return reactive && hasTanstack ? `MaybeRefOrGetter<${inner}>` : inner
+  }
+
+  // Helper: access options value (reactive vs plain)
+  const tv = (expr: string) => (hasTanstack ? `toValue(${expr})` : expr)
+
+  const methods: string[] = []
+
+  if (isGet) {
+    const reactiveOptionsType = buildGetOptionsType(true)
+    const plainOptionsType = buildGetOptionsType(false)
+
+    const reactiveDecl = reactiveOptionsType
+      ? `options${hasDynamicParams ? '' : '?'}: ${reactiveOptionsType}`
+      : null
+    const plainDecl = plainOptionsType
+      ? `options${hasDynamicParams ? '' : '?'}: ${plainOptionsType}`
+      : null
+
+    // Helpers to access params/query from (possibly reactive) options
+    const optAccess = (field: string) =>
+      hasDynamicParams
+        ? `${tv('options')}.${field}`
+        : `${tv('options')}?.${field}`
+    // urlCall uses toValue (reactive, for useQuery); fetchUrlCall is plain (fetchQuery/$fetch)
+    const urlCall = hasDynamicParams ? `_url(${optAccess('params')})` : `_url()`
+    const fetchUrlCall = hasDynamicParams ? `_url(options.params)` : `_url()`
+
+    // Key parts for queryKey
+    const keyParamsPart = hasDynamicParams ? `options.params` : null
+    const keyQueryPart = queryType ? `options${hasDynamicParams ? '' : '?'}.query` : null
+
+    if (hasTanstack) {
+      // useQuery (reactive options via MaybeRefOrGetter)
+      const uqArgs = [
+        reactiveDecl ?? null,
+        `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
+      ].filter(Boolean).join(', ')
+
+      const uqKeyParts = [
+        `..._PATH`,
+        hasDynamicParams ? `${tv('options')}.params` : null,
+        queryType ? `${tv('options')}${hasDynamicParams ? '' : '?'}.query` : null,
+      ].filter(Boolean).join(', ')
+
+      methods.push(
+        `  useQuery: (${uqArgs}) => useQuery({\n`
+        + `    queryKey: computed(() => [${uqKeyParts}].filter(v => v !== undefined)),\n`
+        + `    queryFn: () => $fetch(${urlCall}${queryType ? `, { query: ${optAccess('query')} }` : ''}),\n`
+        + `    ...queryOptions,\n`
+        + `  }),`,
+      )
+
+      // fetchQuery (plain options, uses queryClient)
+      const fqArgs = [
+        `queryClient: QueryClient`,
+        plainDecl ?? null,
+        `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
+      ].filter(Boolean).join(', ')
+
+      const fqKeyParts = [
+        `..._PATH`,
+        keyParamsPart,
+        keyQueryPart,
+      ].filter(Boolean).join(', ')
+
+      methods.push(
+        `  fetchQuery: (${fqArgs}) => queryClient.fetchQuery({\n`
+        + `    queryKey: [${fqKeyParts}].filter(v => v !== undefined),\n`
+        + `    queryFn: () => $fetch(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
+        + `    ...queryOptions,\n`
+        + `  }),`,
+      )
+    }
+
+    // useFetch (always generated)
+    const ufArgs = [
+      plainDecl ?? null,
+      `fetchOptions?: Record<string, unknown>`,
+    ].filter(Boolean).join(', ')
+
+    const ufUrlArg = hasDynamicParams ? `() => _url(options.params)` : `_url`
+
+    methods.push(
+      `  useFetch: (${ufArgs}) => useFetch(${ufUrlArg}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query, ...fetchOptions }` : `, { ...fetchOptions }`}),`,
+    )
+
+    // $fetch (always generated)
+    const fetchArgs = plainDecl ?? null
+    methods.push(
+      `  $fetch: (${fetchArgs ?? ''}) => $fetch(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),`,
+    )
+
+    // key — same required/optional rule as useQuery but plain (not reactive)
+    const keyArgs = plainDecl ?? null
+    const keyParts = [
+      `..._PATH`,
+      keyParamsPart,
+      keyQueryPart,
+    ].filter(Boolean).join(', ')
+    methods.push(
+      `  key: (${keyArgs ?? ''}) => [${keyParts}].filter(v => v !== undefined) as readonly unknown[],`,
+    )
+  }
+  else {
+    // Mutation methods
+    const mutParamsDecl = hasDynamicParams && paramsType
+      ? `options: { params: ${paramsType} }`
+      : null
+    const mutUrlCall = hasDynamicParams ? `_url(options.params)` : `_url()`
+
+    if (hasTanstack) {
+      const mutArgs = [
+        mutParamsDecl,
+        `mutationOptions?: Omit<UseMutationOptions, 'mutationFn'>`,
+      ].filter(Boolean).join(', ')
+
+      const bodyDecl = bodyType ? `body: ${bodyType}` : `body?: unknown`
+
+      methods.push(
+        `  useMutation: (${mutArgs}) => useMutation({\n`
+        + `    mutationFn: (${bodyDecl}) => $fetch(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),\n`
+        + `    ...mutationOptions,\n`
+        + `  }),`,
+      )
+    }
+
+    // useFetch / $fetch for mutations — share the same base args (body + optional params)
+    const mutBaseArgs = [
+      bodyType ? `body: ${bodyType}` : `body?: unknown`,
+      mutParamsDecl,
+    ].filter(Boolean)
+
+    const ufUrlArg = hasDynamicParams ? `() => ${mutUrlCall}` : `_url`
+    methods.push(
+      `  useFetch: (${[...mutBaseArgs, `fetchOptions?: Record<string, unknown>`].join(', ')}) => useFetch(${ufUrlArg}, { method: '${methodUpper}'${bodyType ? ', body' : ''}, ...fetchOptions }),`,
+    )
+
+    methods.push(
+      `  $fetch: (${mutBaseArgs.join(', ')}) => $fetch(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),`,
+    )
+  }
+
+  // zod accessor
+  const zodEntries: string[] = []
+  if (sv.params) zodEntries.push(`    params: ${sv.params}`)
+  if (sv.query) zodEntries.push(`    query: ${sv.query}`)
+  if (sv.body) zodEntries.push(`    body: ${sv.body}`)
+  if (zodEntries.length) {
+    methods.push(`  zod: {\n${zodEntries.join(',\n')},\n  },`)
+  }
+
+  lines.push(`export default {`)
+  lines.push(methods.join('\n\n'))
+  lines.push(`}`)
+
+  return lines.join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// API tree file generation
+// ---------------------------------------------------------------------------
+
+interface TreeNode {
+  children: Record<string, TreeNode>
+  endpoints: Array<{ method: string, varName: string }>
+}
+
+function buildTree(endpoints: EndpointInfo[], varNames: string[]): TreeNode {
+  const root: TreeNode = { children: {}, endpoints: [] }
+  for (let i = 0; i < endpoints.length; i++) {
+    const ep = endpoints[i]!
+    const varName = varNames[i]!
+    let node = root
+    for (const seg of ep.pathSegments) {
+      node.children[seg] ??= { children: {}, endpoints: [] }
+      node = node.children[seg]!
+    }
+    node.endpoints.push({ method: ep.method, varName })
+  }
+  return root
+}
+
+function renderNode(node: TreeNode, indent: number): string {
+  const pad = '  '.repeat(indent)
+  const parts: string[] = []
+
+  for (const { method, varName } of node.endpoints) {
+    parts.push(`${pad}$${method}: ${varName}`)
+  }
+  for (const [key, child] of Object.entries(node.children)) {
+    const inner = renderNode(child, indent + 1)
+    parts.push(`${pad}${key}: {\n${inner}\n${pad}}`)
+  }
+  return parts.join(',\n')
+}
+
+export function generateApiTreeFile(endpoints: EndpointInfo[]): string {
+  if (endpoints.length === 0) {
+    return [
+      `// Auto-generated by @creatiwity/nuxt-schema — DO NOT EDIT`,
+      `export const api = {}`,
+      `export function useApi() { return api }`,
+    ].join('\n')
+  }
+
+  const varNames = endpoints.map(ep =>
+    `_ep_${ep.fileKey.replace(/[.\-$]/g, '_')}`,
+  )
+
+  const imports = endpoints.map((ep, i) =>
+    `import ${varNames[i]} from './schema-api/${ep.fileKey}'`,
+  )
+
+  const tree = renderNode(buildTree(endpoints, varNames), 1)
+
+  return [
+    `// Auto-generated by @creatiwity/nuxt-schema — DO NOT EDIT`,
+    ``,
+    ...imports,
+    ``,
+    `export const api = {`,
+    tree,
+    `}`,
+    ``,
+    `export function useApi() { return api }`,
+  ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Main generation entry point
+// ---------------------------------------------------------------------------
+
+export async function generateApiFiles(
+  srcDir: string,
+  buildDir: string,
+  hasTanstack: boolean,
+  glob: (patterns: string[], options: { cwd: string }) => Promise<string[]>,
+): Promise<EndpointInfo[]> {
+  const apiDir = resolve(srcDir, 'server/api')
+
+  let files: string[] = []
+  try {
+    files = await glob(
+      ['**/*.get.ts', '**/*.post.ts', '**/*.put.ts', '**/*.patch.ts', '**/*.delete.ts'],
+      { cwd: apiDir },
+    )
+  }
+  catch {
+    return []
+  }
+
+  if (!files.length) return []
+
+  const endpoints = files
+    .map(f => parseEndpoint(f, apiDir, srcDir))
+    .filter(ep => ep.usesDefineSchema)
+
+  // Write individual endpoint files into .nuxt/schema-api/
+  const schemaApiDir = join(buildDir, 'schema-api')
+  mkdirSync(schemaApiDir, { recursive: true })
+
+  // Remove stale files from previous runs (deleted/renamed routes)
+  const expectedFiles = new Set(endpoints.map(ep => `${ep.fileKey}.ts`))
+  if (existsSync(schemaApiDir)) {
+    for (const file of readdirSync(schemaApiDir)) {
+      if (file.endsWith('.ts') && !expectedFiles.has(file)) {
+        unlinkSync(join(schemaApiDir, file))
+      }
+    }
+  }
+
+  for (const ep of endpoints) {
+    const content = generateEndpointFile(ep, hasTanstack)
+    writeFileSync(join(schemaApiDir, `${ep.fileKey}.ts`), content, 'utf-8')
+  }
+
+  return endpoints
+}
