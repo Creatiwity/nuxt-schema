@@ -1,6 +1,24 @@
 # Changelog
 
 
+## v0.2.0
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.10...v0.2.0)
+
+### 🚀 Enhancements
+
+- Add frontend endpoints generator ([fc3e483](https://github.com/creatiwity/nuxt-schema/commit/fc3e483))
+
+### 🏡 Chore
+
+- **release:** V0.1.10 ([a2bbfb4](https://github.com/creatiwity/nuxt-schema/commit/a2bbfb4))
+- **docs:** Update README.md with the new features ([c66a014](https://github.com/creatiwity/nuxt-schema/commit/c66a014))
+- Improve release scripts ([fe94e0b](https://github.com/creatiwity/nuxt-schema/commit/fe94e0b))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.1.10
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.9...v0.1.10)
