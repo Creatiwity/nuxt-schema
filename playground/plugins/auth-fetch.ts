@@ -10,11 +10,11 @@ export default defineNuxtPlugin(() => {
   // Create a custom $fetch instance with an interceptor.
   // In a real app you would refresh the token and retry on 401.
   const authFetch = $fetch.create({
-    onRequest({ options }) {
-      // Example: attach a Bearer token to every request.
-      // const token = useCookie('access-token').value
-      // if (token) options.headers = { ...options.headers, Authorization: `Bearer ${token}` }
-    },
+    // Example: attach a Bearer token to every request.
+    // onRequest({ options }) {
+    //   const token = useCookie('access-token').value
+    //   if (token) options.headers = { ...options.headers, Authorization: `Bearer ${token}` }
+    // },
 
     async onResponseError(context) {
       if (context.response.status === 401 && typeof context.options.retry !== 'number') {

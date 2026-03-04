@@ -283,7 +283,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
   // Build the options object type for GET methods
   // params is required when route has dynamic segments
-  // query is always optional at the wrapper level (Zod handles field-level required)
+  // query is always optional at the wrapper level (field-level required is controlled by the schema)
   function buildGetOptionsType(reactive: boolean): string | null {
     const fields: string[] = []
     if (needsParams) fields.push(`params: ${paramsType}`)
@@ -424,13 +424,13 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     )
   }
 
-  // zod accessor
-  const zodEntries: string[] = []
-  if (sv.params) zodEntries.push(`    params: ${sv.params}`)
-  if (sv.query) zodEntries.push(`    query: ${sv.query}`)
-  if (sv.body) zodEntries.push(`    body: ${sv.body}`)
-  if (zodEntries.length) {
-    methods.push(`  zod: {\n${zodEntries.join(',\n')},\n  },`)
+  // schema accessor — library-agnostic (works with Zod, Valibot, ArkType, etc.)
+  const schemaEntries: string[] = []
+  if (sv.params) schemaEntries.push(`    params: ${sv.params}`)
+  if (sv.query) schemaEntries.push(`    query: ${sv.query}`)
+  if (sv.body) schemaEntries.push(`    body: ${sv.body}`)
+  if (schemaEntries.length) {
+    methods.push(`  schema: {\n${schemaEntries.join(',\n')},\n  },`)
   }
 
   lines.push(`export default {`)

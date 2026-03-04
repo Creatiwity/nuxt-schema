@@ -17,7 +17,7 @@ Nuxt module that brings schema-validated API handlers to your server routes and 
 - **Nuxt-native** — `useFetch` and `$fetch` variants always available
 - **Cache key utilities** — `key()` returns a hierarchical key (`["structure", id, "invoices"]`) enabling precise cache invalidation
 - **Custom fetch** — `setApiFetch()` to override the underlying fetch function globally (auth interceptors, token refresh, etc.)
-- **Zod schema access** — `zod.params`, `zod.query`, `zod.body` on each endpoint for form validation reuse
+- **Schema access** — `schema.params`, `schema.query`, `schema.body` on each endpoint for form validation reuse (works with any Standard Schema library)
 - **OpenAPI metadata** — optional Nitro plugin that exposes route schemas as OpenAPI docs
 
 ---
@@ -220,8 +220,8 @@ await queryClient.invalidateQueries({ queryKey: ["structure", "abc"] })
 // Invalidate all invoices queries for this structure (any page/query)
 await queryClient.invalidateQueries({ queryKey: ["structure", "abc", "invoices"] })
 
-// Zod schema access — reuse schemas for form validation
-const querySchema = api.structure.$id.invoices.$get.zod.query
+// Schema access — reuse schemas for form validation (works with any Standard Schema library)
+const querySchema = api.structure.$id.invoices.$get.schema.query
 querySchema.parse({ page: '2' }) // → { page: 2 }
 ```
 
