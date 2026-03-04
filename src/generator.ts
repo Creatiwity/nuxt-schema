@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync, writeFileSync, readdirSync, unlinkSync, existsSync } from 'node:fs'
+import { readFileSync, mkdirSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs'
 import { resolve, dirname, relative, join } from 'node:path'
 import { transformSync } from 'oxc-transform'
 
@@ -127,8 +127,8 @@ export function parseEndpoint(file: string, apiDir: string, srcDir: string): End
     ...(lastSegmentName ? [lastSegmentName] : []),
   ]
 
-  // Convert [param] → $param
-  const pathSegments = rawSegments.map(p => p.replace(/^\[(\w+)\]$/, '$$$1'))
+  // Convert [param] → $param (supports hyphens and other non-word chars, e.g. [user-id])
+  const pathSegments = rawSegments.map(p => p.replace(/^\[([^\]]+)\]$/, '$$$1'))
   const hasDynamicParams = pathSegments.some(p => p.startsWith('$'))
 
   // File key: segments joined with -- then .method  (e.g. structure--$id--invoices.get)
@@ -162,19 +162,31 @@ export function parseEndpoint(file: string, apiDir: string, srcDir: string): End
  */
 const TYPE_HELPER = `type _I<T> = T extends { '~standard': { types?: { output?: infer O } | undefined } } ? NonNullable<O> : unknown`
 
+// Returns true if name is a valid JS identifier (no quotes needed)
+const isSimpleIdent = (name: string) => /^[$_a-z][\w$]*$/i.test(name)
+
+// Converts a kebab-case segment (optionally prefixed with $) to camelCase
+// e.g. "my-feature" → "myFeature", "$user-id" → "$userId"
+function toJsKey(segment: string): string {
+  const hasDollar = segment.startsWith('$')
+  const name = hasDollar ? segment.slice(1) : segment
+  const camel = name.replace(/-([a-z\d])/gi, (_, c: string) => c.toUpperCase())
+  return hasDollar ? `$${camel}` : camel
+}
+
 function buildUrlFn(pathSegments: string[]): string {
   if (!pathSegments.some(s => s.startsWith('$'))) {
     const url = '/api/' + pathSegments.join('/')
     return `function _url() { return '${url}' }`
   }
-  const paramFields = pathSegments
-    .filter(s => s.startsWith('$'))
-    .map(s => `${s.slice(1)}: string`)
-    .join('; ')
-  const urlTemplate = '/api/' + pathSegments.map(s =>
-    s.startsWith('$') ? `\${params.${s.slice(1)}}` : s,
-  ).join('/')
-  return `function _url(params: { ${paramFields} }) { return \`${urlTemplate}\` }`
+  const paramFields: string[] = []
+  const urlParts = pathSegments.map((s) => {
+    if (!s.startsWith('$')) return s
+    const name = s.slice(1)
+    paramFields.push(isSimpleIdent(name) ? `${name}: string` : `'${name}': string`)
+    return `\${params${isSimpleIdent(name) ? `.${name}` : `['${name}']`}}`
+  })
+  return `function _url(params: { ${paramFields.join('; ')} }) { return \`/api/${urlParts.join('/')}\` }`
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +459,8 @@ function renderNode(node: TreeNode, indent: number): string {
   }
   for (const [key, child] of Object.entries(node.children)) {
     const inner = renderNode(child, indent + 1)
-    parts.push(`${pad}${key}: {\n${inner}\n${pad}}`)
+    const jsKey = toJsKey(key)
+    parts.push(`${pad}${jsKey}: {\n${inner}\n${pad}}`)
   }
   return parts.join(',\n')
 }
@@ -489,12 +502,13 @@ export function generateApiTreeFile(endpoints: EndpointInfo[]): string {
 // ---------------------------------------------------------------------------
 
 export async function generateApiFiles(
+  serverDir: string,
   srcDir: string,
   buildDir: string,
   hasTanstack: boolean,
   glob: (patterns: string[], options: { cwd: string }) => Promise<string[]>,
 ): Promise<EndpointInfo[]> {
-  const apiDir = resolve(srcDir, 'server/api')
+  const apiDir = resolve(serverDir, 'api')
 
   let files: string[] = []
   try {
@@ -519,11 +533,9 @@ export async function generateApiFiles(
 
   // Remove stale files from previous runs (deleted/renamed routes)
   const expectedFiles = new Set(endpoints.map(ep => `${ep.fileKey}.ts`))
-  if (existsSync(schemaApiDir)) {
-    for (const file of readdirSync(schemaApiDir)) {
-      if (file.endsWith('.ts') && !expectedFiles.has(file)) {
-        unlinkSync(join(schemaApiDir, file))
-      }
+  for (const file of readdirSync(schemaApiDir)) {
+    if (file.endsWith('.ts') && !expectedFiles.has(file)) {
+      unlinkSync(join(schemaApiDir, file))
     }
   }
 

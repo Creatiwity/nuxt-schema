@@ -39,6 +39,7 @@ export default defineNuxtModule<ModuleOptions>({
       filename: 'schema-api.ts',
       async getContents() {
         const endpoints = await generateApiFiles(
+          nuxt.options.serverDir,
           nuxt.options.srcDir,
           nuxt.options.buildDir,
           hasTanstack,
