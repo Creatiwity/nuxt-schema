@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.3.0
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.2.1...v0.3.0)
+
+### 🚀 Enhancements
+
+- Allow to override $fetch with a custom instance ([160818f](https://github.com/creatiwity/nuxt-schema/commit/160818f))
+- Remove some zod specific namings ([32078b6](https://github.com/creatiwity/nuxt-schema/commit/32078b6))
+
+### 🏡 Chore
+
+- **release:** V0.2.1 ([9a39999](https://github.com/creatiwity/nuxt-schema/commit/9a39999))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.2.1
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.2.0...v0.2.1)
