@@ -1,6 +1,24 @@
 # Changelog
 
 
+## v0.2.1
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.2.0...v0.2.1)
+
+### 🩹 Fixes
+
+- Handle new folder structure and hyphen in path ([59f77d0](https://github.com/creatiwity/nuxt-schema/commit/59f77d0))
+- Improve key generation to allow partial cache clear ([093ff16](https://github.com/creatiwity/nuxt-schema/commit/093ff16))
+
+### 🏡 Chore
+
+- **release:** V0.2.0 ([89f755f](https://github.com/creatiwity/nuxt-schema/commit/89f755f))
+- Remove useless npmrc ([ddf2bf2](https://github.com/creatiwity/nuxt-schema/commit/ddf2bf2))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.2.0
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.1.10...v0.2.0)
