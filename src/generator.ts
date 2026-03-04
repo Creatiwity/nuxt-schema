@@ -174,6 +174,29 @@ function toJsKey(segment: string): string {
   return hasDollar ? `$${camel}` : camel
 }
 
+// Builds a _key() function that interleaves param values with path segments.
+// e.g. ["structure", params.id, "invoices", ...(query !== undefined ? [query] : [])]
+// This enables partial key matching for TanStack Query cache invalidation.
+function buildKeyFn(pathSegments: string[], paramsType: string | null, queryType: string | null): string {
+  const args: string[] = []
+  if (paramsType) args.push(`params: ${paramsType}`)
+  if (queryType) args.push(`query?: ${queryType}`)
+
+  const keyParts: string[] = []
+  for (const s of pathSegments) {
+    if (!s.startsWith('$')) {
+      keyParts.push(JSON.stringify(s))
+    }
+    else if (paramsType) {
+      const name = s.slice(1)
+      keyParts.push(isSimpleIdent(name) ? `params.${name}` : `params['${name}']`)
+    }
+  }
+
+  const querySpread = queryType ? `, ...(query !== undefined ? [query] : [])` : ''
+  return `function _key(${args.join(', ')}): unknown[] { return [${keyParts.join(', ')}${querySpread}] }`
+}
+
 function buildUrlFn(pathSegments: string[]): string {
   if (!pathSegments.some(s => s.startsWith('$'))) {
     const url = '/api/' + pathSegments.join('/')
@@ -197,7 +220,6 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   const { method, pathSegments, hasDynamicParams, schemaImports } = ep
   const isGet = method === 'get'
   const methodUpper = method.toUpperCase()
-  const PATH_KEY = JSON.stringify([...pathSegments, '$' + method])
 
   // Schema variable names
   const sv = {
@@ -247,14 +269,14 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   lines.push(``)
   lines.push(TYPE_HELPER)
   lines.push(``)
-  lines.push(`const _PATH = ${PATH_KEY} as const`)
-  lines.push(``)
-
   // Inferred TypeScript types from schemas
   const paramsType = sv.params ? `_I<typeof ${sv.params}>` : null
   const queryType = sv.query ? `_I<typeof ${sv.query}>` : null
   const bodyType = sv.body ? `_I<typeof ${sv.body}>` : null
+  const needsParams = hasDynamicParams && !!paramsType
 
+  lines.push(buildKeyFn(pathSegments, needsParams ? paramsType : null, queryType))
+  lines.push(``)
   lines.push(buildUrlFn(pathSegments))
   lines.push(``)
 
@@ -263,7 +285,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   // query is always optional at the wrapper level (Zod handles field-level required)
   function buildGetOptionsType(reactive: boolean): string | null {
     const fields: string[] = []
-    if (hasDynamicParams && paramsType) fields.push(`params: ${paramsType}`)
+    if (needsParams) fields.push(`params: ${paramsType}`)
     if (queryType) fields.push(`query?: ${queryType}`)
     if (!fields.length) return null
     const inner = `{ ${fields.join('; ')} }`
@@ -296,8 +318,11 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     const fetchUrlCall = hasDynamicParams ? `_url(options.params)` : `_url()`
 
     // Key parts for queryKey
-    const keyParamsPart = hasDynamicParams ? `options.params` : null
+    const keyParamsPart = needsParams ? `options.params` : null
     const keyQueryPart = queryType ? `options${hasDynamicParams ? '' : '?'}.query` : null
+
+    const buildKeyCall = (paramsExpr: string | null, queryExpr: string | null) =>
+      `_key(${[paramsExpr, queryExpr].filter(Boolean).join(', ')})`
 
     if (hasTanstack) {
       // useQuery (reactive options via MaybeRefOrGetter)
@@ -306,15 +331,14 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
         `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
       ].filter(Boolean).join(', ')
 
-      const uqKeyParts = [
-        `..._PATH`,
-        hasDynamicParams ? `${tv('options')}.params` : null,
+      const uqKeyCall = buildKeyCall(
+        needsParams ? `${tv('options')}.params` : null,
         queryType ? `${tv('options')}${hasDynamicParams ? '' : '?'}.query` : null,
-      ].filter(Boolean).join(', ')
+      )
 
       methods.push(
         `  useQuery: (${uqArgs}) => useQuery({\n`
-        + `    queryKey: computed(() => [${uqKeyParts}].filter(v => v !== undefined)),\n`
+        + `    queryKey: computed(() => ${uqKeyCall}),\n`
         + `    queryFn: () => $fetch(${urlCall}${queryType ? `, { query: ${optAccess('query')} }` : ''}),\n`
         + `    ...queryOptions,\n`
         + `  }),`,
@@ -327,15 +351,9 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
         `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
       ].filter(Boolean).join(', ')
 
-      const fqKeyParts = [
-        `..._PATH`,
-        keyParamsPart,
-        keyQueryPart,
-      ].filter(Boolean).join(', ')
-
       methods.push(
         `  fetchQuery: (${fqArgs}) => queryClient.fetchQuery({\n`
-        + `    queryKey: [${fqKeyParts}].filter(v => v !== undefined),\n`
+        + `    queryKey: ${buildKeyCall(keyParamsPart, keyQueryPart)},\n`
         + `    queryFn: () => $fetch(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
         + `    ...queryOptions,\n`
         + `  }),`,
@@ -362,13 +380,8 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
     // key — same required/optional rule as useQuery but plain (not reactive)
     const keyArgs = plainDecl ?? null
-    const keyParts = [
-      `..._PATH`,
-      keyParamsPart,
-      keyQueryPart,
-    ].filter(Boolean).join(', ')
     methods.push(
-      `  key: (${keyArgs ?? ''}) => [${keyParts}].filter(v => v !== undefined) as readonly unknown[],`,
+      `  key: (${keyArgs ?? ''}) => ${buildKeyCall(keyParamsPart, keyQueryPart)},`,
     )
   }
   else {
