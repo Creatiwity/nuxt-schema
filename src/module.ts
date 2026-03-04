@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { defineNuxtModule, createResolver, useNitro, addServerImportsDir, addServerScanDir, addTemplate, addImports, updateTemplates } from '@nuxt/kit'
 import type { InputPluginOption } from 'rollup'
 import { routeSchema, virtualPrefix } from './plugin'
-import { generateApiFiles, generateApiTreeFile } from './generator'
+import { generateApiFiles, generateApiTreeFile, generateApiFetchConfigFile } from './generator'
 import { glob } from 'tinyglobby'
 
 // Module options TypeScript interface definition
@@ -33,6 +33,14 @@ export default defineNuxtModule<ModuleOptions>({
       // @tanstack/vue-query not installed — skip TanStack-specific code generation
     }
 
+    // Register the fetch config file (holds the overridable _apiFetch reference).
+    const apiFetchConfig = generateApiFetchConfigFile()
+    addTemplate({
+      filename: 'schema-api-fetch.ts',
+      getContents: () => apiFetchConfig,
+      write: true,
+    })
+
     // Register the main schema-api.ts template.
     // getContents is called lazily (during nuxi prepare and builds).
     const mainTemplate = addTemplate({
@@ -50,10 +58,11 @@ export default defineNuxtModule<ModuleOptions>({
       write: true,
     })
 
-    // Register api and useApi as auto-imports pointing to the generated file
+    // Register api, useApi and setApiFetch as auto-imports
     addImports([
       { name: 'api', from: mainTemplate.dst },
       { name: 'useApi', from: mainTemplate.dst },
+      { name: 'setApiFetch', from: mainTemplate.dst },
     ])
 
     // Dev: re-generate when any server/api handler file changes

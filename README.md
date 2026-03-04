@@ -15,7 +15,8 @@ Nuxt module that brings schema-validated API handlers to your server routes and 
 - **Generated `api` client** — for every `defineSchemaHandler` route, the module generates a typed client object auto-imported everywhere in your Nuxt app
 - **TanStack Query integration** (optional) — `useQuery`, `fetchQuery` with reactive cache keys
 - **Nuxt-native** — `useFetch` and `$fetch` variants always available
-- **Cache key utilities** — `key()` with the same signature as `useQuery`, for `invalidateQueries`
+- **Cache key utilities** — `key()` returns a hierarchical key (`["structure", id, "invoices"]`) enabling precise cache invalidation
+- **Custom fetch** — `setApiFetch()` to override the underlying fetch function globally (auth interceptors, token refresh, etc.)
 - **Zod schema access** — `zod.params`, `zod.query`, `zod.body` on each endpoint for form validation reuse
 - **OpenAPI metadata** — optional Nitro plugin that exposes route schemas as OpenAPI docs
 
@@ -75,6 +76,33 @@ export default defineNuxtPlugin((nuxt) => {
 ```
 
 The module auto-detects `@tanstack/vue-query` in your project and adds `useQuery`/`fetchQuery` to the generated client.
+
+### Optional: Custom fetch (auth interceptors, token refresh)
+
+By default all generated API calls use Nuxt's global `$fetch`. You can replace it with a custom instance via `setApiFetch`, which is auto-imported:
+
+```ts
+// plugins/auth-fetch.ts
+export default defineNuxtPlugin(() => {
+  const authFetch = $fetch.create({
+    async onResponseError(context) {
+      if (context.response.status === 401 && typeof context.options.retry !== 'number') {
+        // Guard: if retry is already a number, a retry is in progress — avoid infinite loop
+        // Refresh the token, then let ofetch retry the original request automatically
+        await $fetch('/api/auth/refresh', { method: 'POST' })
+        context.options.retry = 1
+        context.options.retryStatusCodes = [401]
+        context.options.retryDelay = 0
+      }
+    },
+  })
+
+  // All API calls (useQuery, fetchQuery, useFetch, $fetch) now go through authFetch
+  setApiFetch(authFetch)
+})
+```
+
+The override applies to every method on every generated endpoint: `useQuery`, `fetchQuery`, `$fetch`, and `useFetch` (via its `$fetch` option). Individual `useFetch` calls can still be overridden further by passing `$fetch` inside their `fetchOptions`.
 
 ---
 
@@ -182,14 +210,15 @@ const { data, pending } = api.structure.$id.invoices.$get.useFetch(
 // Raw fetch
 const data = await api.structure.$id.invoices.$get.$fetch({ params: { id: 'abc' } })
 
-// Cache key — same signature as useQuery (without queryOptions)
-const key = api.structure.$id.invoices.$get.key({ params: { id: 'abc' } })
-// → ["structure", "$id", "invoices", "$get", { id: "abc" }]
+// Cache key — params are interleaved with path segments for hierarchical invalidation
+const key = api.structure.$id.invoices.$get.key({ params: { id: 'abc' }, query: { page: 1 } })
+// → ["structure", "abc", "invoices", { page: 1 }]
 
-// Partial key — invalidates all queries for this route regardless of query params
-await queryClient.invalidateQueries({
-  queryKey: api.structure.$id.invoices.$get.key({ params: { id: 'abc' } }).slice(0, -1),
-})
+// Invalidate all queries for this structure, regardless of sub-resource or query params
+await queryClient.invalidateQueries({ queryKey: ["structure", "abc"] })
+
+// Invalidate all invoices queries for this structure (any page/query)
+await queryClient.invalidateQueries({ queryKey: ["structure", "abc", "invoices"] })
 
 // Zod schema access — reuse schemas for form validation
 const querySchema = api.structure.$id.invoices.$get.zod.query
