@@ -28,8 +28,8 @@
     </section>
 
     <section>
-      <h2>Zod schema (query)</h2>
-      <p>Available at: <code>api.structure.$id.invoices.$get.zod.query</code></p>
+      <h2>Schema (query)</h2>
+      <p>Available at: <code>api.structure.$id.invoices.$get.schema.query</code></p>
       <pre>{{ zodQueryDesc }}</pre>
     </section>
   </div>
@@ -76,10 +76,10 @@ async function invalidateAll() {
   })
 }
 
-// --- Zod schema access (e.g. for form validation) ---
-const zodQuerySchema = api.structure.$id.invoices.$get.zod.query
-// Example: zodQuerySchema.parse({ page: 1, query: 'ABC' }) → { page: 1, query: 'ABC' }
-const zodQueryDesc = zodQuerySchema
-  ? `Zod schema available — shape: ${Object.keys((zodQuerySchema).def?.shape ?? {}).join(', ') || 'n/a'}`
+// --- Schema access (library-agnostic, e.g. for form validation) ---
+const querySchema = api.structure.$id.invoices.$get.schema.query
+// Example: querySchema['~standard'].validate({ page: 1, query: 'ABC' })
+const zodQueryDesc = querySchema
+  ? `Schema available — shape: ${Object.keys((querySchema as { def?: { shape?: object } }).def?.shape ?? {}).join(', ') || 'n/a'}`
   : 'No query schema'
 </script>

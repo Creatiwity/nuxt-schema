@@ -16,6 +16,7 @@ export interface EndpointInfo {
     params?: SchemaImport
     query?: SchemaImport
     body?: SchemaImport
+    output?: SchemaImport
   }
   usesDefineSchema: boolean
 }
@@ -23,6 +24,10 @@ export interface EndpointInfo {
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
+
+interface SchemaInfo {
+  schemaImports: EndpointInfo['schemaImports']
+}
 
 /**
  * Extract schema variable references from the transformed JS of a handler file.
@@ -32,7 +37,7 @@ function extractSchemaRefs(
   jsCode: string,
   filePath: string,
   srcDir: string,
-): EndpointInfo['schemaImports'] {
+): SchemaInfo {
   // Build a map: varName → importSource
   const importMap: Record<string, string> = {}
   const importRegex = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
@@ -50,7 +55,7 @@ function extractSchemaRefs(
 
   // Locate defineSchemaHandler( and extract its first argument using bracket depth
   const handlerIdx = jsCode.indexOf('defineSchemaHandler(')
-  if (handlerIdx === -1) return {}
+  if (handlerIdx === -1) return { schemaImports: {} }
 
   const startIdx = handlerIdx + 'defineSchemaHandler('.length
   let depth = 0
@@ -72,7 +77,7 @@ function extractSchemaRefs(
       break
     }
   }
-  if (firstArgEnd === -1) return {}
+  if (firstArgEnd === -1) return { schemaImports: {} }
 
   const schemaArg = jsCode.slice(startIdx, firstArgEnd)
 
@@ -83,6 +88,9 @@ function extractSchemaRefs(
   const paramsVar = inputBlock.match(/params\s*:\s*(\w+)/)?.[1]
   const queryVar = inputBlock.match(/query\s*:\s*(\w+)/)?.[1]
   const bodyVar = inputBlock.match(/body\s*:\s*(\w+)/)?.[1]
+
+  // Top-level output schema (not inside input block)
+  const outputVar = schemaArg.match(/\boutput\s*:\s*(\w+)/)?.[1]
 
   const fileDir = dirname(filePath)
 
@@ -103,9 +111,12 @@ function extractSchemaRefs(
   }
 
   return {
-    params: resolveImport(paramsVar),
-    query: resolveImport(queryVar),
-    body: resolveImport(bodyVar),
+    schemaImports: {
+      params: resolveImport(paramsVar),
+      query: resolveImport(queryVar),
+      body: resolveImport(bodyVar),
+      output: resolveImport(outputVar),
+    },
   }
 }
 
@@ -142,7 +153,8 @@ export function parseEndpoint(file: string, apiDir: string, srcDir: string): End
     usesDefineSchema = raw.includes('defineSchemaHandler')
     if (usesDefineSchema) {
       const { code } = transformSync(filePath, raw)
-      schemaImports = extractSchemaRefs(code, filePath, srcDir)
+      const info = extractSchemaInfo(code, filePath, srcDir)
+      schemaImports = info.schemaImports
     }
   }
   catch {
@@ -226,11 +238,12 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     params: schemaImports.params?.name,
     query: schemaImports.query?.name,
     body: schemaImports.body?.name,
+    output: schemaImports.output?.name,
   }
 
   // Group schema imports by source file
   const importsBySource: Record<string, Set<string>> = {}
-  for (const ref of [schemaImports.params, schemaImports.query, schemaImports.body]) {
+  for (const ref of [schemaImports.params, schemaImports.query, schemaImports.body, schemaImports.output]) {
     if (!ref) {
       continue
     }
@@ -269,6 +282,10 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
   lines.push(``)
   lines.push(TYPE_HELPER)
+  if (sv.output) {
+    lines.push(`type _SD<O> = O extends { status: infer S extends number; data: infer D } ? \`\${S}\` extends \`4\${string}\` | \`5\${string}\` ? never : D : never`)
+    lines.push(`type _DO = _SD<_I<typeof ${sv.output}>>`)
+  }
   lines.push(``)
   // Inferred TypeScript types from schemas
   const paramsType = sv.params ? `_I<typeof ${sv.params}>` : null
@@ -295,6 +312,9 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
   // Helper: access options value (reactive vs plain)
   const tv = (expr: string) => (hasTanstack ? `toValue(${expr})` : expr)
+
+  // Type generic for _apiFetch / useFetch — populated when output schema is available
+  const fetchG = sv.output ? '<_DO>' : ''
 
   const methods: string[] = []
 
@@ -340,7 +360,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
       methods.push(
         `  useQuery: (${uqArgs}) => useQuery({\n`
         + `    queryKey: computed(() => ${uqKeyCall}),\n`
-        + `    queryFn: () => _apiFetch(${urlCall}${queryType ? `, { query: ${optAccess('query')} }` : ''}),\n`
+        + `    queryFn: () => _apiFetch${fetchG}(${urlCall}${queryType ? `, { query: ${optAccess('query')} }` : ''}),\n`
         + `    ...queryOptions,\n`
         + `  }),`,
       )
@@ -355,7 +375,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
       methods.push(
         `  fetchQuery: (${fqArgs}) => queryClient.fetchQuery({\n`
         + `    queryKey: ${buildKeyCall(keyParamsPart, keyQueryPart)},\n`
-        + `    queryFn: () => _apiFetch(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
+        + `    queryFn: () => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
         + `    ...queryOptions,\n`
         + `  }),`,
       )
@@ -370,13 +390,13 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     const ufUrlArg = hasDynamicParams ? `() => _url(options.params)` : `_url`
 
     methods.push(
-      `  useFetch: (${ufArgs}) => useFetch(${ufUrlArg}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query, $fetch: _apiFetch, ...fetchOptions }` : `, { $fetch: _apiFetch, ...fetchOptions }`}),`,
+      `  useFetch: (${ufArgs}) => useFetch${fetchG}(${ufUrlArg}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query, $fetch: _apiFetch, ...fetchOptions }` : `, { $fetch: _apiFetch, ...fetchOptions }`}),`,
     )
 
     // $fetch (always generated)
     const fetchArgs = plainDecl ?? null
     methods.push(
-      `  $fetch: (${fetchArgs ?? ''}) => _apiFetch(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),`,
+      `  $fetch: (${fetchArgs ?? ''}) => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),`,
     )
 
     // key — same required/optional rule as useQuery but plain (not reactive)
@@ -402,7 +422,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
       methods.push(
         `  useMutation: (${mutArgs}) => useMutation({\n`
-        + `    mutationFn: (${bodyDecl}) => _apiFetch(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),\n`
+        + `    mutationFn: (${bodyDecl}) => _apiFetch${fetchG}(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),\n`
         + `    ...mutationOptions,\n`
         + `  }),`,
       )
@@ -416,11 +436,11 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
 
     const ufUrlArg = hasDynamicParams ? `() => ${mutUrlCall}` : `_url`
     methods.push(
-      `  useFetch: (${[...mutBaseArgs, `fetchOptions?: Record<string, unknown>`].join(', ')}) => useFetch(${ufUrlArg}, { method: '${methodUpper}'${bodyType ? ', body' : ''}, $fetch: _apiFetch, ...fetchOptions }),`,
+      `  useFetch: (${[...mutBaseArgs, `fetchOptions?: Record<string, unknown>`].join(', ')}) => useFetch${fetchG}(${ufUrlArg}, { method: '${methodUpper}'${bodyType ? ', body' : ''}, $fetch: _apiFetch, ...fetchOptions }),`,
     )
 
     methods.push(
-      `  $fetch: (${mutBaseArgs.join(', ')}) => _apiFetch(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),`,
+      `  $fetch: (${mutBaseArgs.join(', ')}) => _apiFetch${fetchG}(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),`,
     )
   }
 
