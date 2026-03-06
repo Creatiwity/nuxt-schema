@@ -1,6 +1,7 @@
 import { invoicesParams, invoicesQuery, invoicesResponse } from '#shared/schemas/invoices'
 
 export default defineSchemaHandler({
+  description: 'Get paginated invoices for a structure',
   input: {
     params: invoicesParams,
     query: invoicesQuery,

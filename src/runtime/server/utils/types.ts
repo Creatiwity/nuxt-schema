@@ -7,6 +7,9 @@ type EndpointSchemaBody<OBody> = OBody extends object ? { body: StandardSchemaV1
 type EndpointBodyType<OBodyType> = OBodyType extends string ? { bodyType: OBodyType } : { bodyType?: never }
 
 export type EndpointSchema<OParams, OQuery, OBody, OBodyType, Status extends number, OOutput extends { status: Status, data?: unknown }> = {
+  description?: string
+  mcp?: boolean
+  mcpName?: string
   input: EndpointSchemaParams<OParams> & EndpointSchemaQuery<OQuery> & EndpointSchemaBody<OBody> & EndpointBodyType<OBodyType>
   output: StandardSchemaV1<OOutput>
 }

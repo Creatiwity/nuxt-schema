@@ -9,5 +9,12 @@ export default defineNuxtConfig({
   },
   nuxtSchema: {
     enabled: true,
+    mcp: {
+      enabled: true,
+      name: 'nuxt-schema-playground',
+      version: '1.0.0',
+      mode: 'opt-out',
+      path: '/_mcp',
+    },
   },
 })

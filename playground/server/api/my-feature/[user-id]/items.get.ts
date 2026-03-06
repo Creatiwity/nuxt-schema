@@ -1,6 +1,7 @@
 import { myFeatureParams, myFeatureQuery, myFeatureResponse } from '#shared/schemas/my-feature'
 
 export default defineSchemaHandler({
+  description: 'Get items for a user',
   input: {
     params: myFeatureParams,
     query: myFeatureQuery,
