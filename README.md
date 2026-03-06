@@ -19,6 +19,7 @@ Nuxt module that brings schema-validated API handlers to your server routes and 
 - **Custom fetch** — `setApiFetch()` to override the underlying fetch function globally (auth interceptors, token refresh, etc.)
 - **Schema access** — `schema.params`, `schema.query`, `schema.body` on each endpoint for form validation reuse (works with any Standard Schema library)
 - **OpenAPI metadata** — optional Nitro plugin that exposes route schemas as OpenAPI docs
+- **MCP server** — expose your API as an [MCP](https://modelcontextprotocol.io) tool server for AI agents, with optional OAuth 2.0 authentication *(auth: alpha)*
 
 ---
 
@@ -283,9 +284,157 @@ export default defineNuxtConfig({
     // Enables OpenAPI metadata extraction via a Nitro Rollup plugin.
     // Requires nitro.experimental.openAPI: true in your nuxt.config.
     enabled: false,
+
+    mcp: {
+      // Expose a Streamable HTTP MCP server at the configured path.
+      enabled: false,
+
+      // Server name and version reported to MCP clients.
+      name: 'my-app',
+      version: '1.0.0',
+
+      // 'opt-out' (default): all defineSchemaHandler routes are exposed as MCP tools
+      //                       unless mcp: false is set on the handler.
+      // 'opt-in':             only handlers with mcp: true are exposed.
+      mode: 'opt-out',
+
+      // Path where the MCP endpoint is mounted.
+      path: '/_mcp',
+
+      // Authentication — see "MCP Authentication" section below.
+      auth: undefined,
+    },
   },
 })
 ```
+
+---
+
+## MCP server
+
+The MCP server exposes your `defineSchemaHandler` routes as [Model Context Protocol](https://modelcontextprotocol.io) tools, allowing AI agents (Claude Desktop, Cursor, etc.) to call your API directly.
+
+### Quick start
+
+```ts
+// nuxt.config.ts
+nuxtSchema: {
+  mcp: {
+    enabled: true,
+    name: 'my-app',
+    mode: 'opt-out', // all routes exposed by default
+  },
+}
+```
+
+Connect any MCP client to `http://localhost:3000/_mcp`.
+
+### Opting individual routes in or out
+
+```ts
+// Explicitly exposed (useful in opt-in mode)
+defineSchemaHandler({ mcp: true, ... }, handler)
+
+// Explicitly hidden (useful in opt-out mode)
+defineSchemaHandler({ mcp: false, ... }, handler)
+
+// Custom tool name
+defineSchemaHandler({ mcp: true, mcpName: 'list-invoices', ... }, handler)
+```
+
+---
+
+## MCP Authentication
+
+> **Alpha feature** — the authentication layer has not been extensively tested in production. APIs and behaviour may change in a future minor release.
+
+Three authentication modes are available. Without auth configured, the MCP endpoint is publicly accessible.
+
+### Bearer token (static secret)
+
+```ts
+mcp: {
+  enabled: true,
+  auth: { type: 'bearer', token: process.env.MCP_SECRET },
+}
+```
+
+Clients must send `Authorization: Bearer <token>` on every request.
+
+### JWT — validate tokens from an existing OIDC provider
+
+```ts
+mcp: {
+  enabled: true,
+  auth: {
+    type: 'jwt',
+    issuer: 'https://auth.example.com',   // must expose /.well-known/openid-configuration
+    audience: 'my-api',                    // optional
+  },
+}
+```
+
+The module validates incoming Bearer tokens against the provider's `userinfo` endpoint (result cached 5 min). It also exposes `GET /.well-known/oauth-protected-resource` so MCP clients can discover the authorization server automatically.
+
+### OAuth proxy — full PKCE flow through your own platform
+
+Use this when your authorization server is not directly reachable by the MCP client, or when you need to insert custom logic (tenant routing, custom scopes, etc.).
+
+```ts
+// nuxt.config.ts
+mcp: {
+  enabled: true,
+  auth: { type: 'oauth' },
+}
+```
+
+Create `server/mcp-auth.ts` to implement the two required callbacks:
+
+```ts
+// server/mcp-auth.ts
+export default defineMcpAuthHandler({
+  // Return the URL the user should be redirected to for login.
+  // callbackUrl is the URL your provider should redirect back to (/_mcp/callback).
+  getAuthorizationUrl(callbackUrl, state) {
+    return `https://my-platform.com/login?redirect_uri=${callbackUrl}&state=${state}`
+  },
+
+  // Exchange the external provider's authorization code for user claims.
+  // Return an object with at least { sub: string }.
+  async exchangeCode(event, code) {
+    const user = await myPlatform.verifyCode(code)
+    return { sub: user.id, email: user.email }
+  },
+})
+```
+
+The module exposes the full OAuth 2.0 PKCE flow automatically:
+
+| Endpoint | Description |
+|---|---|
+| `GET /.well-known/oauth-protected-resource` | RFC 9728 — points MCP clients to the auth server |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 — auth server metadata |
+| `GET /_mcp/authorize` | Starts the authorization flow |
+| `GET /_mcp/callback` | Receives the external provider's callback |
+| `POST /_mcp/token` | Exchanges the auth code for an access token |
+
+#### Multi-instance deployments
+
+Access tokens, auth sessions, and auth codes are stored via [Nitro Storage](https://nitro.build/guide/storage). In development the default driver is in-memory. For multi-instance deployments (e.g. serverless/Azure Functions), configure a shared storage driver:
+
+```ts
+// nuxt.config.ts
+nitro: {
+  storage: {
+    'mcp-auth': {
+      driver: 'redis',
+      url: process.env.REDIS_URL,
+    },
+  },
+},
+```
+
+Any [unstorage](https://unstorage.unjs.io) driver that supports TTL (Redis, Cloudflare KV, Vercel KV, …) works out of the box.
 
 ---
 

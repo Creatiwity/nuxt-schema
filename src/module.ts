@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineNuxtModule, createResolver, useNitro, addServerImportsDir, addServerScanDir, addTemplate, addImports, updateTemplates, addServerHandler, addPlugin } from '@nuxt/kit'
 import type { InputPluginOption } from 'rollup'
 import { routeSchema, virtualPrefix } from './plugin'
@@ -14,7 +16,10 @@ export interface ModuleOptions {
     version?: string
     mode?: 'opt-in' | 'opt-out'
     path?: string
-    auth?: { type: 'bearer', token: string }
+    auth?:
+      | { type: 'bearer', token: string }
+      | { type: 'jwt', issuer: string, audience?: string }
+      | { type: 'oauth' }
   }
 }
 
@@ -103,7 +108,10 @@ export default defineNuxtModule<ModuleOptions>({
       // Expose runtimeConfig values for the MCP handler (server-only)
       nuxt.options.runtimeConfig.mcpName = mcpOptions.name ?? ''
       nuxt.options.runtimeConfig.mcpVersion = mcpOptions.version ?? '1.0.0'
-      nuxt.options.runtimeConfig.mcpAuthToken = mcpOptions.auth?.token ?? ''
+      const mcpAuth = mcpOptions.auth
+      nuxt.options.runtimeConfig.mcpAuthType = mcpAuth?.type ?? 'bearer'
+      nuxt.options.runtimeConfig.mcpAuthToken = mcpAuth?.type === 'bearer' ? (mcpAuth.token ?? '') : ''
+      nuxt.options.runtimeConfig.mcpAuthIssuer = mcpAuth?.type === 'jwt' ? mcpAuth.issuer : ''
 
       // Expose MCP path publicly so the client router guard can read it
       nuxt.options.runtimeConfig.public ??= {}
@@ -122,11 +130,50 @@ export default defineNuxtModule<ModuleOptions>({
       // Alias #schema-mcp → generated file (used by the MCP handler)
       nuxt.options.alias['#schema-mcp'] = mcpTemplate.dst
 
+      // Virtual module #mcp-auth — points to user's server/mcp-auth.ts if it exists
+      const userMcpAuthFile = join(nuxt.options.serverDir, 'mcp-auth.ts')
+      const mcpAuthTemplate = addTemplate({
+        filename: 'schema-mcp-auth.ts',
+        getContents() {
+          return existsSync(userMcpAuthFile)
+            ? `export { default } from '~/server/mcp-auth'`
+            : `const handler = undefined\nexport default handler`
+        },
+        write: true,
+      })
+      nuxt.options.alias['#mcp-auth'] = mcpAuthTemplate.dst
+
       // Register the MCP event handler at the configured path
       addServerHandler({
         route: mcpPath,
         handler: resolver.resolve('./runtime/server/api/mcp'),
       })
+
+      // Auth-specific route registration
+      if (mcpAuth?.type === 'jwt' || mcpAuth?.type === 'oauth') {
+        addServerHandler({
+          route: '/.well-known/oauth-protected-resource',
+          handler: resolver.resolve('./runtime/server/api/oauth-protected-resource'),
+        })
+      }
+      if (mcpAuth?.type === 'oauth') {
+        addServerHandler({
+          route: '/.well-known/oauth-authorization-server',
+          handler: resolver.resolve('./runtime/server/api/oauth-authorization-server'),
+        })
+        addServerHandler({
+          route: `${mcpPath}/authorize`,
+          handler: resolver.resolve('./runtime/server/api/mcp-authorize'),
+        })
+        addServerHandler({
+          route: `${mcpPath}/callback`,
+          handler: resolver.resolve('./runtime/server/api/mcp-callback'),
+        })
+        addServerHandler({
+          route: `${mcpPath}/token`,
+          handler: resolver.resolve('./runtime/server/api/mcp-token'),
+        })
+      }
 
       // Client plugin: intercept navigation to the MCP path so Vue Router doesn't warn
       addPlugin({

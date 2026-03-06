@@ -2,9 +2,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import { getObjectShape } from '@modelcontextprotocol/sdk/server/zod-compat.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { defineEventHandler, getHeader, setResponseStatus, setResponseHeaders, readRawBody } from 'h3'
+import { defineEventHandler, getHeader, getRequestURL, setResponseStatus, setResponseHeaders, readRawBody } from 'h3'
 import { useRuntimeConfig } from 'nitropack/runtime'
 import { mcpTools } from '#schema-mcp'
+import { validateJwt, lookupAccessToken } from '../utils/mcp-oauth'
 
 function createMcpServer(name: string, version: string): McpServer {
   const server = new McpServer({ name, version })
@@ -51,13 +52,38 @@ function createMcpServer(name: string, version: string): McpServer {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
 
-  // Bearer auth guard
-  const authToken = config.mcpAuthToken as string | undefined
-  if (authToken) {
-    const authHeader = getHeader(event, 'authorization') ?? ''
-    if (authHeader !== `Bearer ${authToken}`) {
+  // Auth guard
+  const authType = config.mcpAuthType as string | undefined
+  const authHeader = getHeader(event, 'authorization') ?? ''
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '')
+
+  if (authType === 'bearer') {
+    const authToken = config.mcpAuthToken as string | undefined
+    if (authToken && authHeader !== `Bearer ${authToken}`) {
       setResponseStatus(event, 401)
       setResponseHeaders(event, { 'WWW-Authenticate': 'Bearer' })
+      return { error: 'Unauthorized' }
+    }
+  }
+  else if (authType === 'jwt') {
+    const issuer = config.mcpAuthIssuer as string
+    if (!bearerToken || !await validateJwt(bearerToken, issuer)) {
+      const origin = getRequestURL(event).origin
+      setResponseStatus(event, 401)
+      setResponseHeaders(event, {
+        'WWW-Authenticate': `Bearer realm="${origin}", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      })
+      return { error: 'Unauthorized' }
+    }
+  }
+  else if (authType === 'oauth') {
+    if (!bearerToken || !await lookupAccessToken(bearerToken)) {
+      const origin = getRequestURL(event).origin
+      const mcpPath = config.public.mcpPath as string
+      setResponseStatus(event, 401)
+      setResponseHeaders(event, {
+        'WWW-Authenticate': `Bearer realm="${origin}${mcpPath}", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      })
       return { error: 'Unauthorized' }
     }
   }
