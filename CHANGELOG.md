@@ -1,6 +1,27 @@
 # Changelog
 
 
+## v0.4.0
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.3.0...v0.4.0)
+
+### 🚀 Enhancements
+
+- Add mcp server auto generator ([1e3a0f6](https://github.com/creatiwity/nuxt-schema/commit/1e3a0f6))
+- Add mcp oauth ([36de866](https://github.com/creatiwity/nuxt-schema/commit/36de866))
+
+### 🩹 Fixes
+
+- Output typing ([d61e99d](https://github.com/creatiwity/nuxt-schema/commit/d61e99d))
+
+### 🏡 Chore
+
+- **release:** V0.3.0 ([ebf6b17](https://github.com/creatiwity/nuxt-schema/commit/ebf6b17))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.3.0
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.2.1...v0.3.0)
