@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.4.1
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.0...v0.4.1)
+
+### 🚀 Enhancements
+
+- Add ensureQueryData ([7edb9ad](https://github.com/creatiwity/nuxt-schema/commit/7edb9ad))
+
+### 🏡 Chore
+
+- **release:** V0.4.0 ([91ad1ea](https://github.com/creatiwity/nuxt-schema/commit/91ad1ea))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.0
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.3.0...v0.4.0)
