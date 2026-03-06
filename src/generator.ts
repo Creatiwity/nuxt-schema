@@ -400,6 +400,14 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
         + `    ...queryOptions,\n`
         + `  }),`,
       )
+
+      methods.push(
+        `  ensureQueryData: (${fqArgs}) => queryClient.ensureQueryData({\n`
+        + `    queryKey: ${buildKeyCall(keyParamsPart, keyQueryPart)},\n`
+        + `    queryFn: () => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
+        + `    ...queryOptions,\n`
+        + `  }),`,
+      )
     }
 
     // useFetch (always generated)
