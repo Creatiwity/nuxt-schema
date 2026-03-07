@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.4.2
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.1...v0.4.2)
+
+### 🚀 Enhancements
+
+- Handle delayed params for useQuery ([ba0a483](https://github.com/creatiwity/nuxt-schema/commit/ba0a483))
+
+### 🏡 Chore
+
+- **release:** V0.4.1 ([688ee1c](https://github.com/creatiwity/nuxt-schema/commit/688ee1c))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.1
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.0...v0.4.1)
