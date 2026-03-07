@@ -328,7 +328,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     if (queryType) fields.push(`query?: ${queryType}`)
     if (!fields.length) return null
     const inner = `{ ${fields.join('; ')} }`
-    return reactive && hasTanstack ? `MaybeRefOrGetter<${inner}>` : inner
+    return reactive && hasTanstack ? `MaybeRefOrGetter<${inner} | null>` : inner
   }
 
   // Helper: access options value (reactive vs plain)
@@ -373,18 +373,38 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
         `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
       ].filter(Boolean).join(', ')
 
-      const uqKeyCall = buildKeyCall(
-        needsParams ? `${tv('options')}.params` : null,
-        queryType ? `${tv('options')}${hasDynamicParams ? '' : '?'}.query` : null,
-      )
+      // When the endpoint has options (params/query), support null to disable the query.
+      // null means "required data not yet available" → enabled: false.
+      // When there are no options at all (no params, no query), null handling is irrelevant.
+      const hasOptions = reactiveDecl !== null
+      if (hasOptions) {
+        const uqKeyCallWithVar = buildKeyCall(
+          needsParams ? `_o.params` : null,
+          queryType ? `_o?.query` : null,
+        )
+        const urlCallWithVar = hasDynamicParams ? `_url(_o.params)` : `_url()`
+        const queryFnBody = `{ const _o = toValue(options)!; return _apiFetch${fetchG}(${urlCallWithVar}${queryType ? `, { query: _o?.query }` : ''}) }`
 
-      methods.push(
-        `  useQuery: (${uqArgs}) => useQuery({\n`
-        + `    queryKey: computed(() => ${uqKeyCall}),\n`
-        + `    queryFn: () => _apiFetch${fetchG}(${urlCall}${queryType ? `, { query: ${optAccess('query')} }` : ''}),\n`
-        + `    ...queryOptions,\n`
-        + `  }),`,
-      )
+        methods.push(
+          `  useQuery: (${uqArgs}) => useQuery({\n`
+          + `    queryKey: computed(() => { const _o = toValue(options); return _o !== null ? ${uqKeyCallWithVar} : [] }),\n`
+          + `    queryFn: () => ${queryFnBody},\n`
+          + `    ...queryOptions,\n`
+          + `    enabled: computed(() => toValue(options) !== null),\n`
+          + `  }),`,
+        )
+      }
+      else {
+        const uqKeyCall = buildKeyCall(null, null)
+
+        methods.push(
+          `  useQuery: (${uqArgs}) => useQuery({\n`
+          + `    queryKey: computed(() => ${uqKeyCall}),\n`
+          + `    queryFn: () => _apiFetch${fetchG}(${urlCall}),\n`
+          + `    ...queryOptions,\n`
+          + `  }),`,
+        )
+      }
 
       // fetchQuery (plain options, uses queryClient)
       const fqArgs = [
