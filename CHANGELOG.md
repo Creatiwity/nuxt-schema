@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.4.3
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.2...v0.4.3)
+
+### 🩹 Fixes
+
+- Input output typing not always correct ([fe55515](https://github.com/creatiwity/nuxt-schema/commit/fe55515))
+
+### 🏡 Chore
+
+- **release:** V0.4.2 ([9516010](https://github.com/creatiwity/nuxt-schema/commit/9516010))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.2
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.1...v0.4.2)

@@ -1,6 +1,6 @@
 {
   "name": "@creatiwity/nuxt-schema",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Nuxt Schema describe and check API",
   "repository": "creatiwity/nuxt-schema",
   "license": "MIT",
