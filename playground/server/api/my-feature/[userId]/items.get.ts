@@ -11,7 +11,7 @@ export default defineSchemaHandler({
   return {
     status: 200 as const,
     data: {
-      userId: params['user-id'],
+      userId: params.userId,
       items: [`item-1`, `item-2`],
       limit: query.limit ?? 10,
     },

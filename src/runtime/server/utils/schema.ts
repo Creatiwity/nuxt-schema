@@ -15,15 +15,18 @@ type DefineSchemaHandlerOptions = {
 }
 
 export function defineSchemaHandler<
+  IParams,
   OParams,
+  IQuery,
   OQuery,
+  IBody,
   OBody,
   OBodyType,
   Status extends number,
   OOutput extends { status: Status, data?: unknown, type?: string },
   Request extends EventHandlerRequest = EventHandlerRequest,
 >(
-  schema: EndpointSchema<OParams, OQuery, OBody, OBodyType, Status, OOutput>,
+  schema: EndpointSchema<IParams, OParams, IQuery, OQuery, IBody, OBody, OBodyType, Status, OOutput>,
   handler: (input: EndpointInput<OParams, OQuery, OBody, OBodyType>, event: H3Event<Request>) => EndpointOutput<Status, OOutput> | Promise<EndpointOutput<Status, OOutput>>,
   options?: DefineSchemaHandlerOptions,
 ) {

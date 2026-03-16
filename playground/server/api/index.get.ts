@@ -1,8 +1,10 @@
+import { modeQuery, modeResponse } from '#shared/schemas/Mode'
+
 export default defineSchemaHandler({
   input: {
-    query,
+    query: modeQuery,
   },
-  output: response,
+  output: modeResponse,
 }, ({ query }) => {
   const mode = (() => {
     if (query.modes == null) {

@@ -21,11 +21,11 @@ type SimpleZodMeta = {
   } | undefined
 }
 
-type SimpleZodObject<T extends object, InnerType> = z.core.$ZodType<T> & SimpleZodMeta & {
+type SimpleZodObject<O extends object, I extends object, InnerType> = z.core.$ZodType<O, I> & SimpleZodMeta & {
   type: 'object'
   def: {
     type: 'object'
-    shape: Record<keyof T, InnerType>
+    shape: Record<keyof O, InnerType>
   }
 }
 
@@ -36,7 +36,7 @@ type SimpleZodString = z.core.$ZodType<string> & {
   }
 }
 
-type SimpleZodParameter<T extends object> = SimpleZodObject<T, SimpleZodString>
+type SimpleZodParameter<O extends object, I extends object> = SimpleZodObject<O, I, SimpleZodString>
 
 type SimpleZodLiteral<T extends string | number> = z.core.$ZodType<T> & {
   type: 'literal'
@@ -52,7 +52,7 @@ type SimpleOutputZodObject = SimpleZodMeta & {
     type: 'object'
     shape: {
       status: SimpleZodLiteral<number>
-      data?: SimpleZodObject<object, unknown>
+      data?: SimpleZodObject<object, object, unknown>
       type?: SimpleZodLiteral<string>
     }
   }
@@ -68,14 +68,14 @@ type SimpleZodUnion<T> = z.core.$ZodType<T> & {
 
 type OutputZodObject = SimpleOutputZodObject | SimpleZodUnion<SimpleOutputZodObject>
 
-type EndpointZodSchemaParams<OParams> = OParams extends object ? { params: SimpleZodParameter<OParams> } : { params?: never }
-type EndpointZodSchemaQuery<OQuery> = OQuery extends object ? { query: SimpleZodParameter<OQuery> } : { query?: never }
-type EndpointZodSchemaBody<OBody> = OBody extends object ? { body: SimpleZodObject<OBody, unknown> } : { body?: never }
+type EndpointZodSchemaParams<OParams, IParams> = OParams extends object ? IParams extends object ? { params: SimpleZodParameter<OParams, IParams> } : { params?: never } : { params?: never }
+type EndpointZodSchemaQuery<OQuery, IQuery> = OQuery extends object ? IQuery extends object ? { query: SimpleZodParameter<OQuery, IQuery> } : { query?: never } : { query?: never }
+type EndpointZodSchemaBody<OBody, IBody> = OBody extends object ? IBody extends object ? { body: SimpleZodObject<OBody, IBody, unknown> } : { body?: never } : { body?: never }
 
 type EndpointBodyType<OBodyType> = OBodyType extends string ? { bodyType: OBodyType } : { bodyType?: never }
 
-type EndpointZodSchema<OParams, OQuery, OBody, OBodyType> = {
-  input: EndpointZodSchemaParams<OParams> & EndpointZodSchemaQuery<OQuery> & EndpointZodSchemaBody<OBody> & EndpointBodyType<OBodyType>
+type EndpointZodSchema<OParams, IParams, OQuery, IQuery, OBody, IBody, OBodyType> = {
+  input: EndpointZodSchemaParams<OParams, IParams> & EndpointZodSchemaQuery<OQuery, IQuery> & EndpointZodSchemaBody<OBody, IBody> & EndpointBodyType<OBodyType>
   output: OutputZodObject
 }
 
@@ -134,12 +134,14 @@ function useRegistry() {
         }
       })
 
+      registry.clear()
+
       return jsonSchema
     },
   }
 }
 
-export function defineSchemaMetaProvider<OParams, OQuery, OBody, OBodyType>(schema: EndpointZodSchema<OParams, OQuery, OBody, OBodyType>): RouteMeta {
+export function defineSchemaMetaProvider<OParams, IParams, OQuery, IQuery, OBody, IBody, OBodyType>(schema: EndpointZodSchema<OParams, IParams, OQuery, IQuery, OBody, IBody, OBodyType>): RouteMeta {
   const { addSchema, toJSONSchema } = useRegistry()
 
   const parameters: Parameter[] = []
@@ -162,7 +164,7 @@ export function defineSchemaMetaProvider<OParams, OQuery, OBody, OBodyType>(sche
       return {
         name: key,
         in: 'query' as const,
-        required: typedValue.type !== 'optional',
+        required: typedValue._zod.optin !== 'optional',
         schema: addSchema(typedValue),
       }
     }))

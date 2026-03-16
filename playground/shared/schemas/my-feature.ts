@@ -1,7 +1,7 @@
 import z from 'zod/v4'
 
 export const myFeatureParams = z.object({
-  'user-id': z.string(),
+  userId: z.string(),
 })
 
 export const myFeatureQuery = z.object({

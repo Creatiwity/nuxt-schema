@@ -5,7 +5,7 @@ export const invoicesParams = z.object({
 })
 
 export const invoicesQuery = z.object({
-  page: z.coerce.number().optional(),
+  page: z.coerce.number<string>().int().min(1).optional().default(1),
   query: z.string().optional(),
 })
 

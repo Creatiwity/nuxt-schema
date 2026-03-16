@@ -11,7 +11,7 @@ export default defineSchemaHandler({
   return {
     status: 200 as const,
     data: {
-      invoices: [`invoice-${params.id}-page${query.page ?? 1}${query.query ? `-${query.query}` : ''}`],
+      invoices: [`invoice-${params.id}-page${query.page}${query.query ? `-${query.query}` : ''}`],
     },
   }
 })

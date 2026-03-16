@@ -193,7 +193,8 @@ export function parseEndpoint(file: string, apiDir: string, srcDir: string): End
  * A compact type helper that infers the output type of any Standard Schema V1
  * compatible schema (Zod v4, Valibot, etc.) without requiring an import.
  */
-const TYPE_HELPER = `type _I<T> = T extends { '~standard': { types?: { output?: infer O } | undefined } } ? NonNullable<O> : unknown`
+const TYPE_HELPER = `type _O<T> = T extends { '~standard': { types?: { output?: infer O } | undefined } } ? NonNullable<O> : unknown
+type _I<T> = T extends { '~standard': { types?: { input?: infer O } | undefined } } ? NonNullable<O> : unknown`
 
 // Returns true if name is a valid JS identifier (no quotes needed)
 const isSimpleIdent = (name: string) => /^[$_a-z][\w$]*$/i.test(name)
@@ -305,7 +306,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   lines.push(TYPE_HELPER)
   if (sv.output) {
     lines.push(`type _SD<O> = O extends { status: infer S extends number; data: infer D } ? \`\${S}\` extends \`4\${string}\` | \`5\${string}\` ? never : D : never`)
-    lines.push(`type _DO = _SD<_I<typeof ${sv.output}>>`)
+    lines.push(`type _DO = _SD<_O<typeof ${sv.output}>>`)
   }
   lines.push(``)
   // Inferred TypeScript types from schemas
@@ -600,8 +601,10 @@ export function generateMcpFile(
   const importsBySource: Record<string, Set<string>> = {}
   for (const ep of mcpEndpoints) {
     for (const ref of [ep.schemaImports.params, ep.schemaImports.query, ep.schemaImports.body]) {
-      if (!ref) continue
-      ;(importsBySource[ref.from] ??= new Set()).add(ref.name)
+      if (!ref) {
+        continue
+      }
+      (importsBySource[ref.from] ??= new Set()).add(ref.name)
     }
   }
 

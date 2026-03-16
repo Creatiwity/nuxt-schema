@@ -43,20 +43,20 @@ const queryClient = useQueryClient()
 // --- useQuery (TanStack reactive) ---
 const { data, isPending } = api.structure.$id.invoices.$get.useQuery({
   params: { id: 'testid' },
-  query: { page: 1, query: 'ABC' },
+  query: { query: 'ABC' },
 })
 
 // --- useFetch (Nuxt composable) ---
 const { data: nuxtData, pending: nuxtPending } = api.structure.$id.invoices.$get.useFetch({
   params: { id: 'testid' },
-  query: { page: 2 },
+  query: { page: '2' },
 })
 
 // --- fetchQuery: imperative TanStack fetch (e.g. for prefetch in event handlers) ---
 async function prefetch() {
   const result = await api.structure.$id.invoices.$get.fetchQuery(queryClient, {
     params: { id: 'testid' },
-    query: { page: 1 },
+    query: { page: '1' },
   })
   console.log('fetchQuery result:', result)
 }
