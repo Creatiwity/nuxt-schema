@@ -670,7 +670,7 @@ export async function generateApiFiles(
 ): Promise<EndpointInfo[]> {
   const apiDir = resolve(serverDir, 'api')
 
-  let files: string[] = []
+  let files: string[]
   try {
     files = await glob(
       ['**/*.get.ts', '**/*.post.ts', '**/*.put.ts', '**/*.patch.ts', '**/*.delete.ts'],

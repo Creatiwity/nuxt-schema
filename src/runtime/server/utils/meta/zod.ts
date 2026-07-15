@@ -186,7 +186,7 @@ export function defineSchemaMetaProvider<OParams, IParams, OQuery, IQuery, OBody
   const responses: ResponsesMap = {}
 
   if (schema.output != null) {
-    let outputs: SimpleOutputZodObject[] = []
+    let outputs: SimpleOutputZodObject[]
 
     if (schema.output.type === 'object') {
       outputs = [schema.output]
