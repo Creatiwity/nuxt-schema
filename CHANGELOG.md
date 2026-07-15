@@ -1,6 +1,22 @@
 # Changelog
 
 
+## v0.4.4
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.3...v0.4.4)
+
+### 🚀 Enhancements
+
+- Unify input passing for mutation endpoints ([4977f2c](https://github.com/creatiwity/nuxt-schema/commit/4977f2c))
+
+### 🏡 Chore
+
+- **release:** V0.4.3 ([4110bfe](https://github.com/creatiwity/nuxt-schema/commit/4110bfe))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.3
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.2...v0.4.3)
