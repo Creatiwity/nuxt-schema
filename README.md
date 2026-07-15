@@ -232,22 +232,34 @@ querySchema.parse({ page: '2' }) // → { page: 2 }
 
 ### POST / PATCH / PUT / DELETE endpoints
 
+Every input (path params, query, body) is provided through a single object at
+call time, so a single instance can target different params/query/body per call.
+
 ```ts
-// Reactive mutation (TanStack)
+// Reactive mutation (TanStack) — inputs are passed to mutate()
 const { mutate, isPending } = api.orders.$post.useMutation(mutationOptions?)
-mutate(body)
+mutate({ body })
 
 // Nuxt native
-const { data } = await api.orders.$post.useFetch(body, fetchOptions?)
+const { data } = await api.orders.$post.useFetch({ body }, fetchOptions?)
 
 // Raw fetch
-await api.orders.$post.$fetch(body)
+await api.orders.$post.$fetch({ body })
 ```
 
-For endpoints with dynamic params:
+For endpoints with dynamic params and/or a query schema, path params, query, and
+body all live in the same object and can change on each call:
 
 ```ts
-await api.structure.$id.orders.$post.$fetch(body, { params: { id: 'abc' } })
+const { mutate } = api.structure.$id.orders.$post.useMutation()
+mutate({ params: { id: 'abc' }, query: { notify: true }, body: { /* ... */ } })
+
+// useFetch / $fetch take the same unified object
+await api.structure.$id.orders.$post.$fetch({
+  params: { id: 'abc' },
+  query: { notify: true },
+  body: { /* ... */ },
+})
 ```
 
 ---

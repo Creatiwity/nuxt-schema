@@ -456,41 +456,55 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     )
   }
   else {
-    // Mutation methods
-    const mutParamsDecl = hasDynamicParams && paramsType
-      ? `options: { params: ${paramsType} }`
-      : null
-    const mutUrlCall = hasDynamicParams ? `_url(options.params)` : `_url()`
+    // Mutation methods.
+    // Every input (path params, query, body) is provided at call time through a
+    // single object, so a single mutation instance can target different
+    // params/query/body on each call rather than having any of them fixed when
+    // the method is invoked. useMutation receives this object as its mutationFn
+    // `variables`; useFetch/$fetch receive it as their `input` argument.
+    const varFields = [
+      needsParams ? `params: ${paramsType}` : null,
+      queryType ? `query?: ${queryType}` : null,
+      bodyType ? `body: ${bodyType}` : `body?: unknown`,
+    ].filter(Boolean)
+    const varsType = `{ ${varFields.join('; ')} }`
+
+    // The object is required as soon as it carries a required field (path params
+    // or a typed body); otherwise every field is optional and so is the object.
+    const inputRequired = needsParams || !!bodyType
+
+    // Build the fetch options object ({ method, query?, body? }) reading from an
+    // arbitrary accessor expression (`variables` or `input`).
+    const buildFetchOpts = (src: string) => [
+      `method: '${methodUpper}'`,
+      queryType ? `query: ${src}.query` : null,
+      bodyType ? `body: ${src}.body` : null,
+    ].filter(Boolean).join(', ')
+
+    const urlCallFrom = (src: string) => hasDynamicParams ? `_url(${src}.params)` : `_url()`
 
     if (hasTanstack) {
-      const mutArgs = [
-        mutParamsDecl,
-        `mutationOptions?: Omit<UseMutationOptions, 'mutationFn'>`,
-      ].filter(Boolean).join(', ')
-
-      const bodyDecl = bodyType ? `body: ${bodyType}` : `body?: unknown`
-
       methods.push(
-        `  useMutation: (${mutArgs}) => useMutation({\n`
-        + `    mutationFn: (${bodyDecl}) => _apiFetch${fetchG}(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),\n`
+        `  useMutation: (mutationOptions?: Omit<UseMutationOptions, 'mutationFn'>) => useMutation({\n`
+        + `    mutationFn: (variables: ${varsType}) => _apiFetch${fetchG}(${urlCallFrom('variables')}, { ${buildFetchOpts('variables')} }),\n`
         + `    ...mutationOptions,\n`
         + `  }),`,
       )
     }
 
-    // useFetch / $fetch for mutations — share the same base args (body + optional params)
-    const mutBaseArgs = [
-      bodyType ? `body: ${bodyType}` : `body?: unknown`,
-      mutParamsDecl,
-    ].filter(Boolean)
+    // useFetch / $fetch for mutations — same unified input object.
+    const inputSrc = `input${inputRequired ? '' : '?'}`
+    const inputDecl = `${inputSrc}: ${varsType}`
+    const inputUrlCall = urlCallFrom(inputSrc)
+    const inputFetchOpts = buildFetchOpts(inputSrc)
+    const ufUrlArg = hasDynamicParams ? `() => ${inputUrlCall}` : `_url`
 
-    const ufUrlArg = hasDynamicParams ? `() => ${mutUrlCall}` : `_url`
     methods.push(
-      `  useFetch: (${[...mutBaseArgs, `fetchOptions?: Record<string, unknown>`].join(', ')}) => useFetch${fetchG}(${ufUrlArg}, { method: '${methodUpper}'${bodyType ? ', body' : ''}, $fetch: _apiFetch, ...fetchOptions }),`,
+      `  useFetch: (${inputDecl}, fetchOptions?: Record<string, unknown>) => useFetch${fetchG}(${ufUrlArg}, { ${inputFetchOpts}, $fetch: _apiFetch, ...fetchOptions }),`,
     )
 
     methods.push(
-      `  $fetch: (${mutBaseArgs.join(', ')}) => _apiFetch${fetchG}(${mutUrlCall}, { method: '${methodUpper}'${bodyType ? ', body' : ''} }),`,
+      `  $fetch: (${inputDecl}) => _apiFetch${fetchG}(${inputUrlCall}, { ${inputFetchOpts} }),`,
     )
   }
 
