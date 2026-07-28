@@ -1,6 +1,23 @@
 # Changelog
 
 
+## v0.4.5
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.4...v0.4.5)
+
+### 🩹 Fixes
+
+- No-content responses collapsing resolved type to never ([77eaa0d](https://github.com/creatiwity/nuxt-schema/commit/77eaa0d))
+- Invalid assignment to augmented PublicRuntimeConfig ([b194201](https://github.com/creatiwity/nuxt-schema/commit/b194201))
+
+### 🏡 Chore
+
+- **release:** V0.4.4 ([fa25dfa](https://github.com/creatiwity/nuxt-schema/commit/fa25dfa))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.4
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.3...v0.4.4)
