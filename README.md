@@ -262,6 +262,31 @@ await api.structure.$id.orders.$post.$fetch({
 })
 ```
 
+### Resolved response type
+
+The handler returns `{ status, data }`, but the client resolves to the `data` of
+the **success** variants only — 4xx and 5xx variants are dropped, since those
+surface as a thrown `FetchError` rather than a resolved value.
+
+A success variant with no `data` field (the 204 No Content shape) resolves to
+`null`:
+
+```ts
+const response = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal(204) }),
+  z.strictObject({ status: z.literal(404), data: z.strictObject({ error: z.string() }) }),
+])
+
+// data is `null`, not `never` nor `void`
+const data = await api.structure.$id.invoices.$invoiceId.$delete.$fetch({
+  params: { id: 'abc', invoiceId: 'inv-1' },
+})
+```
+
+`null` rather than `void`/`undefined` is deliberate: Nuxt's `useFetch` derives
+its `Method` generic from `ResT extends void`, so a void-ish payload would pin
+the call to `'get'` and reject the generated `method: 'DELETE'`.
+
 ---
 
 ## `defineSchemaHandler` options

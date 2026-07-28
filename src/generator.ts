@@ -305,8 +305,20 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   lines.push(``)
   lines.push(TYPE_HELPER)
   if (sv.output) {
-    lines.push(`type _SD<O> = O extends { status: infer S extends number; data: infer D } ? \`\${S}\` extends \`4\${string}\` | \`5\${string}\` ? never : D : never`)
-    lines.push(`type _DO = _SD<_O<typeof ${sv.output}>>`)
+    // Success payload of a response union: 4xx/5xx variants are dropped, and a
+    // variant carrying no `data` (the 204 No Content shape) maps to `null`.
+    //
+    // `null` is load-bearing. Nuxt's `useFetch` defaults its `Method` generic
+    // through `ResT extends void ? … : …`; `void` and `undefined` both satisfy
+    // `extends void` and would pin `Method` to `'get'`, rejecting the
+    // `method: 'DELETE'` we emit. `never` is worse: `ResT` is a naked type
+    // parameter, so the conditional distributes and the empty union collapses
+    // `Method` to `never` outright. `_NN` therefore guarantees `_DO` is never
+    // `never` — including when the output schema is not a status union at all
+    // and `_O` degrades to `unknown`.
+    lines.push(`type _SD<O> = O extends { status: infer S extends number } ? \`\${S}\` extends \`4\${string}\` | \`5\${string}\` ? never : O extends { data?: infer D } ? ('data' extends keyof O ? D : null) : null : never`)
+    lines.push(`type _NN<T> = [T] extends [never] ? null : T`)
+    lines.push(`type _DO = _NN<_SD<_O<typeof ${sv.output}>>>`)
   }
   lines.push(``)
   // Inferred TypeScript types from schemas

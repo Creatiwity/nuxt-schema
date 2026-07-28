@@ -21,3 +21,19 @@ export const invoicesResponse = z.discriminatedUnion('status', [
     data: z.strictObject({ error: z.string() }),
   }),
 ])
+
+export const invoiceDeleteParams = z.object({
+  id: z.string(),
+  invoiceId: z.string(),
+})
+
+// Success variant carries no `data` — the 204 No Content shape.
+export const invoiceDeleteResponse = z.discriminatedUnion('status', [
+  z.strictObject({
+    status: z.literal(204),
+  }).meta({ description: 'Invoice deleted' }),
+  z.strictObject({
+    status: z.literal(404),
+    data: z.strictObject({ error: z.string() }),
+  }),
+])

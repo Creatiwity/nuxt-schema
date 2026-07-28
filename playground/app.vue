@@ -25,6 +25,12 @@
       <button @click="invalidateAll">
         Invalidate all invoices
       </button>
+      <button @click="removeInvoice">
+        $fetch DELETE (204 No Content)
+      </button>
+      <button @click="deleteInvoice({ params: { id: 'testid', invoiceId: 'inv-1' } })">
+        useMutation DELETE (204 No Content)
+      </button>
     </section>
 
     <section>
@@ -58,7 +64,24 @@ async function prefetch() {
     params: { id: 'testid' },
     query: { page: '1' },
   })
-  console.log('fetchQuery result:', result)
+  // Pins the success payload: 4xx variants dropped, `data` unwrapped
+  const invoices: { invoices: string[] } = result
+  console.log('fetchQuery result:', invoices)
+}
+
+// --- useMutation on a 204 No Content route ---
+const { mutateAsync: deleteInvoice } = api.structure.$id.invoices.$invoiceId.$delete.useMutation()
+
+async function removeInvoice() {
+  const result = await api.structure.$id.invoices.$invoiceId.$delete.$fetch({
+    params: { id: 'testid', invoiceId: 'inv-1' },
+  })
+  // A success variant without `data` resolves to `null` — not `never`, which
+  // would collapse Nuxt's `useFetch` Method generic and reject method: 'DELETE'.
+  // Asserted both ways: `null = result` alone would also accept `never`.
+  const noContent: null = result
+  const roundTrip: typeof result = null
+  console.log('delete result:', noContent, roundTrip)
 }
 
 // --- Cache invalidation via key ---
