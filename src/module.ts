@@ -113,8 +113,10 @@ export default defineNuxtModule<ModuleOptions>({
       nuxt.options.runtimeConfig.mcpAuthToken = mcpAuth?.type === 'bearer' ? (mcpAuth.token ?? '') : ''
       nuxt.options.runtimeConfig.mcpAuthIssuer = mcpAuth?.type === 'jwt' ? mcpAuth.issuer : ''
 
-      // Expose MCP path publicly so the client router guard can read it
-      nuxt.options.runtimeConfig.public ??= {}
+      // Expose MCP path publicly so the client router guard can read it.
+      // No `??= {}` guard: Nuxt's schema always resolves `runtimeConfig.public`
+      // to at least `{}`, and once a project sets `mcpPath` the augmented
+      // `PublicRuntimeConfig` requires it — making `{}` an invalid assignment.
       nuxt.options.runtimeConfig.public.mcpPath = mcpPath
 
       // Generate schema-mcp.ts
