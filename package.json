@@ -2,7 +2,10 @@
   "name": "@creatiwity/nuxt-schema",
   "version": "0.4.6",
   "description": "Nuxt Schema describe and check API",
-  "repository": "creatiwity/nuxt-schema",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/creatiwity/nuxt-schema.git"
+  },
   "license": "MIT",
   "type": "module",
   "private": false,
