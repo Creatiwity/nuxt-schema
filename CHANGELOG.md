@@ -1,6 +1,27 @@
 # Changelog
 
 
+## v0.4.6
+
+[compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.5...v0.4.6)
+
+### 🩹 Fixes
+
+- UseQuery ignoring select when typing data ([e3b929e](https://github.com/creatiwity/nuxt-schema/commit/e3b929e))
+- Query key of the root route ([363fc93](https://github.com/creatiwity/nuxt-schema/commit/363fc93))
+
+### 🏡 Chore
+
+- **release:** V0.4.5 ([9af0975](https://github.com/creatiwity/nuxt-schema/commit/9af0975))
+
+### 🤖 CI
+
+- Run on Node 24 ([a9f5259](https://github.com/creatiwity/nuxt-schema/commit/a9f5259))
+
+### ❤️ Contributors
+
+- Julien Blatecky ([@julien1619](https://github.com/julien1619))
+
 ## v0.4.5
 
 [compare changes](https://github.com/creatiwity/nuxt-schema/compare/v0.4.4...v0.4.5)
