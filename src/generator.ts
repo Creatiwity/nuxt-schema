@@ -227,8 +227,11 @@ function buildKeyFn(pathSegments: string[], paramsType: string | null, queryType
     }
   }
 
-  const querySpread = queryType ? `, ...(query !== undefined ? [query] : [])` : ''
-  return `function _key(${args.join(', ')}): unknown[] { return [${keyParts.join(', ')}${querySpread}] }`
+  // The root route (/api/) has no segment. An empty string stands for it, so its
+  // key is never [], which a disabled query of any route uses as a placeholder.
+  if (keyParts.length === 0) keyParts.push(JSON.stringify(''))
+  if (queryType) keyParts.push(`...(query !== undefined ? [query] : [])`)
+  return `function _key(${args.join(', ')}): unknown[] { return [${keyParts.join(', ')}] }`
 }
 
 function buildUrlFn(pathSegments: string[]): string {
