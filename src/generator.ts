@@ -283,7 +283,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   if (hasTanstack) {
     if (isGet) {
       lines.push(`import { useQuery, type QueryClient } from '@tanstack/vue-query'`)
-      lines.push(`import type { UseQueryOptions } from '@tanstack/vue-query'`)
+      lines.push(`import type { DefaultError, EnsureQueryDataOptions, FetchQueryOptions, QueryKey, UseQueryOptions } from '@tanstack/vue-query'`)
     }
     else {
       lines.push(`import { useMutation } from '@tanstack/vue-query'`)
@@ -294,7 +294,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
   lines.push(`import { _apiFetch } from '../schema-api-fetch'`)
   if (isGet && hasTanstack) {
     lines.push(`import { computed, toValue } from 'vue'`)
-    lines.push(`import type { MaybeRefOrGetter } from 'vue'`)
+    lines.push(`import type { MaybeRefOrGetter, Ref } from 'vue'`)
   }
 
   // Schema imports
@@ -344,9 +344,6 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     return reactive && hasTanstack ? `MaybeRefOrGetter<${inner} | null>` : inner
   }
 
-  // Helper: access options value (reactive vs plain)
-  const tv = (expr: string) => (hasTanstack ? `toValue(${expr})` : expr)
-
   // Type generic for _apiFetch / useFetch — populated when output schema is available
   const fetchG = sv.output ? '<_DO>' : ''
 
@@ -363,13 +360,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
       ? `options${hasDynamicParams ? '' : '?'}: ${plainOptionsType}`
       : null
 
-    // Helpers to access params/query from (possibly reactive) options
-    const optAccess = (field: string) =>
-      hasDynamicParams
-        ? `${tv('options')}.${field}`
-        : `${tv('options')}?.${field}`
-    // urlCall uses toValue (reactive, for useQuery); fetchUrlCall is plain (fetchQuery/$fetch)
-    const urlCall = hasDynamicParams ? `_url(${optAccess('params')})` : `_url()`
+    // Plain options: useQuery unwraps its reactive options before calling _get
     const fetchUrlCall = hasDynamicParams ? `_url(options.params)` : `_url()`
 
     // Key parts for queryKey
@@ -379,11 +370,28 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     const buildKeyCall = (paramsExpr: string | null, queryExpr: string | null) =>
       `_key(${[paramsExpr, queryExpr].filter(Boolean).join(', ')})`
 
+    // The one fetch every GET method goes through. Its resolved type is the
+    // query's data type (`_QD`), whether or not an output schema types it.
+    lines.push(
+      `const _get = (${plainDecl ?? ''}) => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''})`,
+    )
+    lines.push(``)
+
     if (hasTanstack) {
+      // Option types bound to the endpoint's data type, so that TanStack infers
+      // `TData` from `select` the way its own `useQuery` does. `UseQueryOptions`
+      // is a `MaybeRef<…>`: `Omit` over that union would keep no key at all, so
+      // the plain object variant is taken out of it first.
+      lines.push(`type _QD = Awaited<ReturnType<typeof _get>>`)
+      lines.push(`type _UQO<TData> = Omit<Exclude<UseQueryOptions<_QD, DefaultError, TData, _QD, QueryKey>, Ref<unknown>>, 'queryKey' | 'queryFn'>`)
+      lines.push(`type _FQO = Omit<FetchQueryOptions<_QD, DefaultError, _QD, QueryKey>, 'queryKey' | 'queryFn'>`)
+      lines.push(`type _EQO = Omit<EnsureQueryDataOptions<_QD, DefaultError, _QD, QueryKey>, 'queryKey' | 'queryFn'>`)
+      lines.push(``)
+
       // useQuery (reactive options via MaybeRefOrGetter)
       const uqArgs = [
         reactiveDecl ?? null,
-        `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
+        `queryOptions?: _UQO<TData>`,
       ].filter(Boolean).join(', ')
 
       // When the endpoint has options (params/query), support null to disable the query.
@@ -395,13 +403,11 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
           needsParams ? `_o.params` : null,
           queryType ? `_o?.query` : null,
         )
-        const urlCallWithVar = hasDynamicParams ? `_url(_o.params)` : `_url()`
-        const queryFnBody = `{ const _o = toValue(options)!; return _apiFetch${fetchG}(${urlCallWithVar}${queryType ? `, { query: _o?.query }` : ''}) }`
 
         methods.push(
-          `  useQuery: (${uqArgs}) => useQuery({\n`
+          `  useQuery: <TData = _QD>(${uqArgs}) => useQuery<_QD, DefaultError, TData, QueryKey>({\n`
           + `    queryKey: computed(() => { const _o = toValue(options); return _o !== null ? ${uqKeyCallWithVar} : [] }),\n`
-          + `    queryFn: () => ${queryFnBody},\n`
+          + `    queryFn: () => _get(toValue(options)!),\n`
           + `    ...queryOptions,\n`
           + `    enabled: computed(() => toValue(options) !== null),\n`
           + `  }),`,
@@ -411,33 +417,35 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
         const uqKeyCall = buildKeyCall(null, null)
 
         methods.push(
-          `  useQuery: (${uqArgs}) => useQuery({\n`
+          `  useQuery: <TData = _QD>(${uqArgs}) => useQuery<_QD, DefaultError, TData, QueryKey>({\n`
           + `    queryKey: computed(() => ${uqKeyCall}),\n`
-          + `    queryFn: () => _apiFetch${fetchG}(${urlCall}),\n`
+          + `    queryFn: () => _get(),\n`
           + `    ...queryOptions,\n`
           + `  }),`,
         )
       }
 
-      // fetchQuery (plain options, uses queryClient)
-      const fqArgs = [
+      // fetchQuery / ensureQueryData (plain options, use queryClient). Typed on
+      // the endpoint's data, without `select`: neither of them applies one.
+      const fqArgs = (optionsType: string) => [
         `queryClient: QueryClient`,
         plainDecl ?? null,
-        `queryOptions?: Omit<UseQueryOptions, 'queryKey' | 'queryFn'>`,
+        `queryOptions?: ${optionsType}`,
       ].filter(Boolean).join(', ')
+      const getCall = plainDecl ? `_get(options)` : `_get()`
 
       methods.push(
-        `  fetchQuery: (${fqArgs}) => queryClient.fetchQuery({\n`
+        `  fetchQuery: (${fqArgs('_FQO')}) => queryClient.fetchQuery<_QD, DefaultError, _QD, QueryKey>({\n`
         + `    queryKey: ${buildKeyCall(keyParamsPart, keyQueryPart)},\n`
-        + `    queryFn: () => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
+        + `    queryFn: () => ${getCall},\n`
         + `    ...queryOptions,\n`
         + `  }),`,
       )
 
       methods.push(
-        `  ensureQueryData: (${fqArgs}) => queryClient.ensureQueryData({\n`
+        `  ensureQueryData: (${fqArgs('_EQO')}) => queryClient.ensureQueryData<_QD, DefaultError, _QD, QueryKey>({\n`
         + `    queryKey: ${buildKeyCall(keyParamsPart, keyQueryPart)},\n`
-        + `    queryFn: () => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),\n`
+        + `    queryFn: () => ${getCall},\n`
         + `    ...queryOptions,\n`
         + `  }),`,
       )
@@ -456,10 +464,7 @@ export function generateEndpointFile(ep: EndpointInfo, hasTanstack: boolean): st
     )
 
     // $fetch (always generated)
-    const fetchArgs = plainDecl ?? null
-    methods.push(
-      `  $fetch: (${fetchArgs ?? ''}) => _apiFetch${fetchG}(${fetchUrlCall}${queryType ? `, { query: options${hasDynamicParams ? '' : '?'}.query }` : ''}),`,
-    )
+    methods.push(`  $fetch: _get,`)
 
     // key — same required/optional rule as useQuery but plain (not reactive)
     const keyArgs = plainDecl ?? null

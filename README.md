@@ -192,7 +192,13 @@ const { data } = api.structure.$id.invoices.$get.useFetch({
 // Reactive query (TanStack) — re-fetches when params/query change
 const { data, isPending } = api.structure.$id.invoices.$get.useQuery(
   { params: { id: 'abc' }, query: { page: 1 } },
-  queryOptions?, // Omit<UseQueryOptions, 'queryKey' | 'queryFn'>
+  queryOptions?, // UseQueryOptions without queryKey/queryFn, typed on the endpoint's data
+)
+
+// `select` types `data` the way TanStack's own useQuery does
+const { data: count } = api.structure.$id.invoices.$get.useQuery(
+  { params: { id: 'abc' } },
+  { select: result => result.invoices.length }, // data: Ref<number | undefined>
 )
 
 // Imperative fetch (TanStack) — for prefetch or event handlers
