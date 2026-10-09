@@ -52,6 +52,38 @@ const { data, isPending } = api.structure.$id.invoices.$get.useQuery({
   query: { query: 'ABC' },
 })
 
+// --- useQuery with select: `data` takes the type `select` returns ---
+// Type checks only, never called: `npm run test:types` fails if one breaks.
+function _useQueryTypeChecks() {
+  // Without select, `data` is the success payload
+  const { data: payload } = api.structure.$id.invoices.$get.useQuery({ params: { id: 'testid' } })
+  const invoices: { invoices: string[] } | undefined = payload.value
+  // @ts-expect-error `data` is the payload, not `any`
+  const payloadIsNotAString: string = payload.value
+
+  // With select, `data` is what select returns, from the payload it receives
+  const { data: count } = api.structure.$id.invoices.$get.useQuery(
+    { params: { id: 'testid' } },
+    { select: result => result.invoices.length },
+  )
+  const invoiceCount: number | undefined = count.value
+  // @ts-expect-error `data` is the selected number, not `any`
+  const countIsNotAString: string = count.value
+
+  // A select that expects another input than the payload is refused
+  api.structure.$id.invoices.$get.useQuery(
+    { params: { id: 'testid' } },
+    // @ts-expect-error the payload has no `total`
+    { select: (result: { total: number }) => result.total },
+  )
+
+  // Endpoints without options keep the same inference
+  const { data: mode } = api.$get.useQuery(undefined, { select: () => true as const })
+  const modeIsTrue: true | undefined = mode.value
+
+  return { invoices, payloadIsNotAString, invoiceCount, countIsNotAString, modeIsTrue }
+}
+
 // --- useFetch (Nuxt composable) ---
 const { data: nuxtData, pending: nuxtPending } = api.structure.$id.invoices.$get.useFetch({
   params: { id: 'testid' },
